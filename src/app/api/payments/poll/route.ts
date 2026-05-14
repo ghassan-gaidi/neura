@@ -1,79 +1,97 @@
 /**
  * GET /api/payments/poll
- * Cron job endpoint — checks for uncredited USDC transfers to the wallet.
- * Runs every 5 minutes via Vercel Cron Jobs (vercel.json).
+ * Vercel Cron Job — checks for uncredited USDC transfers via Base RPC.
+ * Runs every 5 minutes (configured in vercel.json).
  * 
- * Requires BASESCAN_API_KEY for on-chain lookups.
- * Logs new transfers — manual matching needed for unknown senders.
+ * Checks recent blocks for USDC Transfer events to our wallet.
+ * No external API needed — direct chain access.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
-const WALLET = process.env.PAYMENT_WALLET_ADDRESS || '0x29021dd5306D7b3b6608a2bc8276D33c1200C7Ef'
-const USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+const WALLET = (process.env.PAYMENT_WALLET_ADDRESS || '0x29021dd5306D7b3b6608a2bc8276D33c1200C7Ef').toLowerCase()
+const USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'.toLowerCase()
+const TRANSFER_SIG = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+const RPC_URL = process.env.BASE_RPC_URL || 'https://mainnet.base.org'
+
+async function rpcCall(method: string, params: unknown[]): Promise<any> {
+  const res = await fetch(RPC_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', method, params, id: 1 }),
+  })
+  return (await res.json()).result
+}
 
 export async function GET(request: NextRequest) {
-  // Verify this is a Vercel Cron Job call
-  const isCron = request.headers.get('x-vercel-cron') === '1'
-  if (!isCron && process.env.VERCEL_ENV === 'production') {
+  // Only Vercel Cron or local dev
+  if (request.headers.get('x-vercel-cron') !== '1' && process.env.VERCEL_ENV === 'production') {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
 
-  const apikey = process.env.BASESCAN_API_KEY
-  if (!apikey) {
-    console.warn('[payment-poll] BASESCAN_API_KEY not configured')
-    return NextResponse.json({ ok: false, error: 'BASESCAN_API_KEY not configured' })
-  }
-
   try {
-    // Fetch USDC transfers to the wallet (last 10 min)
-    const url = `https://api.basescan.org/api?module=account&action=tokentx&address=${WALLET}&contractaddress=${USDC_CONTRACT}&sort=desc&apikey=${apikey}`
-    const res = await fetch(url)
-    const data = await res.json()
+    const currentBlockHex = await rpcCall('eth_blockNumber', [])
+    const currentBlock = parseInt(currentBlockHex, 16)
+    const walletPadded = '000000000000000000000000' + WALLET.replace('0x', '')
 
-    if (data.status !== '1' || !data.result) {
-      return NextResponse.json({ ok: false, error: 'basescan_api_error' })
+    // Check last 100 blocks (~20 min) for USDC transfers to our wallet
+    const fromBlock = '0x' + Math.max(currentBlock - 100, 0).toString(16)
+    const logs = await rpcCall('eth_getLogs', [{
+      fromBlock,
+      toBlock: 'latest',
+      address: USDC_CONTRACT,
+      topics: [TRANSFER_SIG, null, '0x' + walletPadded],
+    }])
+
+    if (!logs || logs.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        wallet: WALLET,
+        current_block: currentBlock,
+        checked_blocks: 100,
+        new_uncredited: [],
+        checked_at: new Date().toISOString(),
+      })
     }
 
-    const now = Math.floor(Date.now() / 1000)
-    const cutoff = now - 600 // 10 minutes
+    // Process each transfer, skip already-redeemed ones
     const newTransfers: Array<{
-      hash: string; from: string; amount: string; timestamp: string; confirmations: number
+      hash: string; from: string; amount: string; confirmations: number
     }> = []
 
-    for (const tx of data.result) {
-      // Only inbound transfers to our wallet
-      if (tx.to?.toLowerCase() !== WALLET.toLowerCase()) continue
-      if (parseInt(tx.timeStamp) < cutoff) continue
-
-      // Check if already redeemed
+    for (const log of logs) {
       const { data: existing } = await supabase
         .from('credit_transactions')
         .select('id')
-        .eq('reference_id', tx.hash)
+        .eq('reference_id', log.transactionHash)
         .limit(1)
 
       if (existing?.length) continue
 
+      const sender = '0x' + log.topics[1].slice(26)
+      const amount = (parseInt(log.data, 16) / 1_000_000).toFixed(2)
+      const txBlock = parseInt(log.blockNumber, 16)
+
       newTransfers.push({
-        hash: tx.hash,
-        from: tx.from,
-        amount: (parseInt(tx.value) / 1_000_000).toFixed(2),
-        timestamp: new Date(parseInt(tx.timeStamp) * 1000).toISOString(),
-        confirmations: parseInt(tx.confirmations) || 0,
+        hash: log.transactionHash,
+        from: sender,
+        amount,
+        confirmations: currentBlock - txBlock,
       })
     }
 
     if (newTransfers.length > 0) {
-      console.log(`[payment-poll] Found ${newTransfers.length} uncredited transfer(s):`, 
+      console.log(`[payment-poll] ${newTransfers.length} uncredited transfer(s):`,
         newTransfers.map(t => `${t.amount} USDC from ${t.from.slice(0,10)}...`).join(', '))
     }
 
     return NextResponse.json({
       ok: true,
       wallet: WALLET,
-      checked_at: new Date().toISOString(),
+      current_block: currentBlock,
+      checked_blocks: 100,
       new_uncredited: newTransfers,
+      checked_at: new Date().toISOString(),
     })
   } catch (err: any) {
     console.error('[payment-poll] Error:', err.message)
@@ -81,7 +99,4 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/**
- * POST — also accept POST for webhook-style calls from external services
- */
 export { GET as POST }

@@ -2,10 +2,7 @@
  * On-chain payment verification for Base USDC payments.
  * 
  * Verifies that a USDC transaction was sent to the Neura payment wallet.
- * 
- * Uses two methods:
- *   1. Basescan API (primary) — simple and free
- *   2. Base RPC (fallback) — direct chain access
+ * Uses direct Base RPC calls — no third-party API dependency.
  */
 
 import { X402_CONFIG } from './credits'
@@ -28,12 +25,14 @@ export interface PaymentVerification {
 }
 
 /**
- * Verify a USDC payment on Base.
- * Checks that the transaction:
- *   - Transfers USDC
- *   - To the Neura payment wallet
- *   - For at least the expected amount
- *   - Has sufficient confirmations
+ * Verify a USDC payment on Base by checking the transaction receipt directly.
+ * No API key needed — uses the public Base RPC.
+ * 
+ * Checks:
+ *   - Tx has a USDC Transfer event matching our wallet
+ *   - Amount meets the expected minimum
+ *   - At least 2 confirmations
+ *   - Not already redeemed
  */
 export async function verifyPayment(
   txHash: string,
@@ -50,74 +49,12 @@ export async function verifyPayment(
     return { verified: false, error: 'payment_tx_already_redeemed' }
   }
 
-  // Try Basescan first
-  const basescanResult = await verifyViaBasescan(txHash, expectedAmountUsdc)
-  if (basescanResult.verified) return basescanResult
-
-  // Fallback to Base RPC
   return await verifyViaRpc(txHash, expectedAmountUsdc)
 }
 
 /**
- * Verify via Basescan API.
- * Requires BASESCAN_API_KEY env var. If not set, falls through.
- */
-async function verifyViaBasescan(
-  txHash: string,
-  expectedAmountUsdc?: string
-): Promise<{ verified: boolean; details?: PaymentVerification; error?: string }> {
-  const apiKey = process.env.BASESCAN_API_KEY
-  if (!apiKey) {
-    return { verified: false, error: 'BASESCAN_API_KEY not configured' }
-  }
-
-  try {
-    const url = `https://api.basescan.org/api?module=account&action=tokentx&txhash=${txHash}&sort=desc&apikey=${apiKey}`
-    const res = await fetch(url)
-    const data = await res.json()
-
-    if (data.status !== '1' || !data.result?.length) {
-      return { verified: false, error: 'tx_not_found' }
-    }
-
-    // Find the USDC transfer to our wallet
-    const transfer = data.result.find(
-      (tx: any) =>
-        tx.contractAddress?.toLowerCase() === USDC_CONTRACT.toLowerCase() &&
-        tx.to?.toLowerCase() === X402_CONFIG.recipient.toLowerCase()
-    )
-
-    if (!transfer) {
-      return { verified: false, error: 'no_usdc_transfer_to_wallet' }
-    }
-
-    const amount = transfer.value // raw amount (6 decimals for USDC)
-    const amountDecimal = (parseInt(amount) / 1_000_000).toFixed(2)
-
-    if (expectedAmountUsdc && parseFloat(amountDecimal) < parseFloat(expectedAmountUsdc)) {
-      return { verified: false, error: `amount_too_low: got ${amountDecimal} USDC, expected ${expectedAmountUsdc}` }
-    }
-
-    return {
-      verified: true,
-      details: {
-        verified: true,
-        amount: amountDecimal,
-        from: transfer.from,
-        to: transfer.to,
-        txHash,
-        confirmations: parseInt(transfer.confirmations) || 0,
-        blockNumber: parseInt(transfer.blockNumber),
-      },
-    }
-  } catch (err: any) {
-    return { verified: false, error: `basescan_error: ${err.message}` }
-  }
-}
-
-/**
  * Verify via direct Base RPC call.
- * Uses a public RPC endpoint or ALCHEMY_API_KEY if configured.
+ * Parses ERC20 Transfer event logs from the transaction receipt.
  */
 async function verifyViaRpc(
   txHash: string,
@@ -126,17 +63,25 @@ async function verifyViaRpc(
   try {
     const rpcUrl = process.env.BASE_RPC_URL || 'https://mainnet.base.org'
 
-    // Get transaction receipt
-    const receiptRes = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'eth_getTransactionReceipt',
-        params: [txHash],
-        id: 1,
+    // Get current block number for confirmations
+    const [blockRes, receiptRes] = await Promise.all([
+      fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', method: 'eth_blockNumber', params: [], id: 1,
+        }),
       }),
-    })
+      fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', method: 'eth_getTransactionReceipt', params: [txHash], id: 2,
+        }),
+      }),
+    ])
+
+    const blockData = await blockRes.json()
     const receiptData = await receiptRes.json()
     const receipt = receiptData.result
 
@@ -144,61 +89,51 @@ async function verifyViaRpc(
       return { verified: false, error: 'tx_not_found_on_chain' }
     }
 
-    // Get block number for confirmations
-    const blockRes = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'eth_blockNumber',
-        params: [],
-        id: 2,
-      }),
-    })
-    const blockData = await blockRes.json()
     const currentBlock = parseInt(blockData.result, 16)
     const txBlock = parseInt(receipt.blockNumber, 16)
     const confirmations = currentBlock - txBlock
 
-    // Minimum 2 confirmations for safety
     if (confirmations < 2) {
       return { verified: false, error: `waiting_for_confirmations: ${confirmations}/2` }
     }
 
-    // Parse logs for USDC Transfer event matching our wallet
-    const walletAddress = X402_CONFIG.recipient.toLowerCase().replace('0x', '').padStart(64, '0')
+    // Our wallet address padded to 32 bytes for topic matching
+    const walletAddressRaw = X402_CONFIG.recipient.toLowerCase().replace('0x', '')
+    const walletAddressPadded = '000000000000000000000000' + walletAddressRaw
 
+    // Parse logs for USDC Transfer event to our wallet
     for (const log of receipt.logs || []) {
-      // Check: contract is USDC, event is Transfer, to address matches
       if (
         log.address?.toLowerCase() === USDC_CONTRACT.toLowerCase() &&
-        log.topics?.[0]?.toLowerCase() === TRANSFER_EVENT_SIG &&
-        log.topics?.[2]?.toLowerCase().endsWith(walletAddress)
+        log.topics?.[0]?.toLowerCase() === TRANSFER_EVENT_SIG
       ) {
-        // Decode the amount from the log data (USDC has 6 decimals)
-        const amountHex = log.data
-        const amountRaw = parseInt(amountHex, 16)
-        const amountDecimal = (amountRaw / 1_000_000).toFixed(2)
+        const toAddress = log.topics[2].toLowerCase()
 
-        if (expectedAmountUsdc && parseFloat(amountDecimal) < parseFloat(expectedAmountUsdc)) {
-          return { verified: false, error: `amount_too_low: got ${amountDecimal} USDC` }
-        }
+        if (toAddress.endsWith(walletAddressRaw) || toAddress === '0x' + walletAddressPadded) {
+          // Decode amount (USDC has 6 decimal places)
+          const amountRaw = parseInt(log.data, 16)
+          const amountDecimal = (amountRaw / 1_000_000).toFixed(2)
 
-        // Decode sender from topics[1]
-        const senderHex = log.topics[1]
-        const sender = '0x' + senderHex.slice(26)
+          if (expectedAmountUsdc && parseFloat(amountDecimal) < parseFloat(expectedAmountUsdc)) {
+            return { verified: false, error: `amount_too_low: got ${amountDecimal} USDC` }
+          }
 
-        return {
-          verified: true,
-          details: {
+          // Decode sender from topics[1]
+          const senderHex = log.topics[1].slice(26)
+          const sender = '0x' + senderHex
+
+          return {
             verified: true,
-            amount: amountDecimal,
-            from: sender,
-            to: X402_CONFIG.recipient,
-            txHash,
-            confirmations,
-            blockNumber: txBlock,
-          },
+            details: {
+              verified: true,
+              amount: amountDecimal,
+              from: sender,
+              to: X402_CONFIG.recipient,
+              txHash,
+              confirmations,
+              blockNumber: txBlock,
+            },
+          }
         }
       }
     }
@@ -211,7 +146,7 @@ async function verifyViaRpc(
 
 /**
  * Redeem a verified payment for a tenant.
- * Marks the tx as used and credits the balance.
+ * Atomically adds credits and records the transaction.
  */
 export async function redeemPayment(
   tenantId: string,
@@ -226,7 +161,6 @@ export async function redeemPayment(
     throw new Error('Invalid credit amount from payment')
   }
 
-  // Atomically add credits
   const { data, error } = await supabase.rpc('redeem_payment', {
     p_tenant_id: tenantId,
     p_tx_hash: paymentTx,
