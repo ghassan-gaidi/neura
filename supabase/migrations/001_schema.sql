@@ -1,30 +1,34 @@
--- Enable pgvector extension
-CREATE EXTENSION IF NOT EXISTS vector;
+-- Neura schema — dedicated Supabase project, uses public schema directly.
+-- If colocating with another app, wrap in CREATE SCHEMA neura and set search_path.
+
+-- Enable pgvector extension (safe if already exists)
+CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA extensions;
 
 -- ============================================================
 -- API Keys — tenants for multi-agent isolation
 -- ============================================================
-CREATE TABLE api_keys (
+-- Note: no FK on tenant_id — multiple keys per tenant, control via app logic.
+CREATE TABLE IF NOT EXISTS api_keys (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL DEFAULT gen_random_uuid(),
-  key_hash TEXT NOT NULL UNIQUE,           -- SHA-256 of the raw key
+  key_hash TEXT NOT NULL UNIQUE,
   label TEXT DEFAULT '',
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_used_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_api_keys_tenant ON api_keys(tenant_id);
-CREATE INDEX idx_api_keys_hash ON api_keys(key_hash);
+CREATE INDEX IF NOT EXISTS idx_api_keys_tenant ON api_keys(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
 
 -- ============================================================
 -- Memories — vector-searchable long-term storage
 -- ============================================================
-CREATE TABLE memories (
+CREATE TABLE IF NOT EXISTS memories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES api_keys(tenant_id),
+  tenant_id UUID NOT NULL,
   content TEXT NOT NULL,
-  embedding vector(1536),                  -- text-embedding-3-small
+  embedding extensions.vector(1536),
   metadata JSONB DEFAULT '{}',
   tags TEXT[] DEFAULT '{}',
   importance INT DEFAULT 0 CHECK (importance >= 0 AND importance <= 10),
@@ -33,28 +37,23 @@ CREATE TABLE memories (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_memories_tenant ON memories(tenant_id);
-CREATE INDEX idx_memories_created ON memories(tenant_id, created_at DESC);
-CREATE INDEX idx_memories_tags ON memories USING GIN(tags);
-CREATE INDEX idx_memories_metadata ON memories USING GIN(metadata jsonb_path_ops);
+CREATE INDEX IF NOT EXISTS idx_memories_tenant ON memories(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_memories_tags ON memories USING GIN(tags);
+CREATE INDEX IF NOT EXISTS idx_memories_metadata ON memories USING GIN(metadata jsonb_path_ops);
 
--- HNSW index for fast approximate vector search
-CREATE INDEX idx_memories_embedding ON memories
-  USING hnsw (embedding vector_cosine_ops)
-  WITH (m = 16, ef_construction = 200);
-
--- Row Level Security: agents only see their own memories
-ALTER TABLE memories ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON memories
-  FOR ALL
-  USING (tenant_id = current_setting('app.tenant_id')::UUID);
+-- HNSW index (requires pgvector >= 0.5.0, search path needs extensions schema for operator class)
+SET search_path TO public, extensions;
+CREATE INDEX IF NOT EXISTS idx_memories_embedding ON memories
+  USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 200);
+SET search_path TO public;
 
 -- ============================================================
 -- State Store — persistent key-value for agent context
 -- ============================================================
-CREATE TABLE state_store (
+CREATE TABLE IF NOT EXISTS state_store (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES api_keys(tenant_id),
+  tenant_id UUID NOT NULL,
   key TEXT NOT NULL,
   value JSONB NOT NULL DEFAULT '{}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -62,31 +61,21 @@ CREATE TABLE state_store (
   UNIQUE(tenant_id, key)
 );
 
-CREATE INDEX idx_state_tenant ON state_store(tenant_id);
-
-ALTER TABLE state_store ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON state_store
-  FOR ALL
-  USING (tenant_id = current_setting('app.tenant_id')::UUID);
+CREATE INDEX IF NOT EXISTS idx_state_tenant ON state_store(tenant_id);
 
 -- ============================================================
 -- Usage Logs — per-request accounting
 -- ============================================================
-CREATE TABLE usage_logs (
+CREATE TABLE IF NOT EXISTS usage_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES api_keys(tenant_id),
-  api_key_id UUID REFERENCES api_keys(id),
+  tenant_id UUID NOT NULL,
+  api_key_id UUID,
   endpoint TEXT NOT NULL,
   tokens_used INT DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_usage_tenant ON usage_logs(tenant_id, created_at DESC);
-
-ALTER TABLE usage_logs ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON usage_logs
-  FOR ALL
-  USING (tenant_id = current_setting('app.tenant_id')::UUID);
+CREATE INDEX IF NOT EXISTS idx_usage_tenant ON usage_logs(tenant_id, created_at DESC);
 
 -- ============================================================
 -- Auto-update updated_at trigger
@@ -99,39 +88,34 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_memories_updated_at ON memories;
+CREATE TRIGGER trg_memories_updated_at
+  BEFORE UPDATE ON memories FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS trg_state_updated_at ON state_store;
+CREATE TRIGGER trg_state_updated_at
+  BEFORE UPDATE ON state_store FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
 -- ============================================================
--- Vector Search RPC — used by GET & POST /api/memory/search
+-- Vector Search RPC — returns memories by cosine similarity
 -- ============================================================
 CREATE OR REPLACE FUNCTION search_memories(
   p_tenant_id UUID,
-  p_embedding vector(1536),
+  p_embedding extensions.vector(1536),
   p_limit INT DEFAULT 10,
   p_min_score FLOAT DEFAULT 0.0
 )
 RETURNS TABLE(
-  id UUID,
-  content TEXT,
-  metadata JSONB,
-  tags TEXT[],
-  importance INT,
-  expires_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ,
-  updated_at TIMESTAMPTZ,
+  id UUID, content TEXT, metadata JSONB, tags TEXT[], importance INT,
+  expires_at TIMESTAMPTZ, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ,
   similarity FLOAT
 )
-LANGUAGE plpgsql
-AS $$
+LANGUAGE plpgsql AS $$
 BEGIN
   RETURN QUERY
   SELECT
-    m.id,
-    m.content,
-    m.metadata,
-    m.tags,
-    m.importance,
-    m.expires_at,
-    m.created_at,
-    m.updated_at,
+    m.id, m.content, m.metadata, m.tags, m.importance,
+    m.expires_at, m.created_at, m.updated_at,
     1 - (m.embedding <=> p_embedding) AS similarity
   FROM memories m
   WHERE m.tenant_id = p_tenant_id
@@ -141,27 +125,3 @@ BEGIN
   LIMIT p_limit;
 END;
 $$;
-
--- ============================================================
--- exec_sql RPC — for running raw SQL (admin use)
--- ============================================================
-CREATE OR REPLACE FUNCTION exec_sql(sql TEXT, params JSONB DEFAULT '[]')
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-  result JSONB;
-BEGIN
-  EXECUTE sql INTO result USING params;
-  RETURN result;
-END;
-$$;
-
-CREATE TRIGGER trg_memories_updated_at
-  BEFORE UPDATE ON memories
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-
-CREATE TRIGGER trg_state_updated_at
-  BEFORE UPDATE ON state_store
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
