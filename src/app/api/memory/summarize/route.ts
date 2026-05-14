@@ -1,9 +1,10 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { resolveApiKey } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/middleware'
 import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
+import { checkCredits, deductCredits, buildX402Response } from '@/lib/credits'
 
 /**
  * POST /api/memory/summarize
@@ -20,6 +21,16 @@ export async function POST(request: NextRequest) {
 
     const rl = checkRateLimit(auth.apiKeyId)
     if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
+
+    // Credits check — 5 credits for summarization
+    const creditCheck = await checkCredits(auth.tenantId, 'POST', '/api/memory/summarize')
+    if (!creditCheck.allowed) {
+      const x402 = buildX402Response(auth.tenantId, creditCheck.cost)
+      return NextResponse.json(
+        { error: x402 },
+        { status: 402, headers: { 'X-Credits-Balance': '0', 'X-Credits-Needed': String(creditCheck.cost) } }
+      )
+    }
 
     const body = await request.json().catch(() => ({}))
     if (!body.memory_ids && !body.query) {
@@ -114,12 +125,13 @@ export async function POST(request: NextRequest) {
     }
 
     logUsage(auth, 'POST /api/memory/summarize')
+    const nbSummary = await deductCredits(auth.tenantId, 'POST', '/api/memory/summarize')
     return respond({
       summary,
       total_memories: memories.length,
       summary_type: summaryType,
       memory_ids: memories.map((m) => m.id),
-    }, 200)
+    }, 200, { credits_remaining: nbSummary ?? undefined })
   } catch (err: any) {
     console.error('POST /api/memory/summarize error:', err)
     return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })

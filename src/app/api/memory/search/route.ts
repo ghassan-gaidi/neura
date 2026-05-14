@@ -6,6 +6,8 @@ import { checkRateLimit } from '@/lib/middleware'
 import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 import { SearchMemoryRequest } from '@/lib/types'
+import { checkCredits, deductCredits, buildX402Response } from '@/lib/credits'
+import { NextResponse } from 'next/server'
 
 /**
  * POST /api/memory/search
@@ -22,6 +24,16 @@ export async function POST(request: NextRequest) {
       return respondError('rate_limited', 'Rate limit exceeded', 429, {
         retry_after: Math.ceil(rl.resetMs / 1000),
       })
+    }
+
+    // Credits check — 2 credits for advanced search
+    const creditCheck = await checkCredits(auth.tenantId, 'POST', '/api/memory/search')
+    if (!creditCheck.allowed) {
+      const x402 = buildX402Response(auth.tenantId, creditCheck.cost)
+      return NextResponse.json(
+        { error: x402 },
+        { status: 402, headers: { 'X-Credits-Balance': '0', 'X-Credits-Needed': String(creditCheck.cost) } }
+      )
     }
 
     const body: SearchMemoryRequest = await request.json().catch(() => ({}))
@@ -58,7 +70,8 @@ export async function POST(request: NextRequest) {
       }
 
       logUsage(auth, 'POST /api/memory/search')
-      return respond(results, 200, { total: results.length, query: body.query })
+      const nb1 = await deductCredits(auth.tenantId, 'POST', '/api/memory/search')
+      return respond(results, 200, { total: results.length, query: body.query, credits_remaining: nb1 ?? undefined })
     }
 
     // Filter-only search
@@ -94,7 +107,8 @@ export async function POST(request: NextRequest) {
     }
 
     logUsage(auth, 'POST /api/memory/search')
-    return respond(data || [], 200, { total: data?.length || 0 })
+    const nb2 = await deductCredits(auth.tenantId, 'POST', '/api/memory/search')
+    return respond(data || [], 200, { total: data?.length || 0, credits_remaining: nb2 ?? undefined })
   } catch (err: any) {
     console.error('POST /api/memory/search error:', err)
     return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })

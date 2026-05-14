@@ -124,7 +124,7 @@ export async function GET(request: NextRequest) {
     const minScore = parseFloat(searchParams.get('min_score') || '0.0')
 
     if (!query) {
-      // No query — return most recent
+      // No query — return most recent (free)
       const { data, error } = await supabase
         .from('memories')
         .select('id, content, metadata, tags, importance, expires_at, created_at, updated_at')
@@ -140,7 +140,16 @@ export async function GET(request: NextRequest) {
       return respond(data || [], 200, { total: data?.length || 0, ...getUsageMeta(auth) })
     }
 
-    // Semantic search
+    // Semantic search — costs 1 credit
+    const creditCheck = await checkCredits(auth.tenantId, 'GET', '/api/memory')
+    if (!creditCheck.allowed) {
+      const x402 = buildX402Response(auth.tenantId, creditCheck.cost)
+      return NextResponse.json(
+        { error: x402 },
+        { status: 402, headers: { 'X-Credits-Balance': '0', 'X-Credits-Needed': String(creditCheck.cost) } }
+      )
+    }
+
     let queryEmbedding: number[]
     try {
       queryEmbedding = await generateEmbedding(query)
@@ -182,7 +191,8 @@ export async function GET(request: NextRequest) {
     }))
 
     logUsage(auth, 'GET /api/memory')
-    return respond(results, 200, { total: results.length, query, ...getUsageMeta(auth) })
+    const newBalance = await deductCredits(auth.tenantId, 'GET', '/api/memory')
+    return respond(results, 200, { total: results.length, query, ...getUsageMeta(auth, newBalance ?? undefined) })
   } catch (err: any) {
     console.error('GET /api/memory error:', err)
     return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })

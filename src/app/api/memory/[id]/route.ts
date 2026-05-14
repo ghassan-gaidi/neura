@@ -5,6 +5,8 @@ import { checkRateLimit } from '@/lib/middleware'
 import { respond, respondError } from '@/lib/response'
 import { AuthContext } from '@/lib/types'
 import { fireWebhook } from '@/lib/webhooks'
+import { checkCredits, deductCredits, buildX402Response } from '@/lib/credits'
+import { NextResponse } from 'next/server'
 
 /**
  * DELETE /api/memory/[id]
@@ -72,6 +74,16 @@ export async function PATCH(
     const { id } = await params
     if (!id) return respondError('validation_error', 'Memory ID is required', 400)
 
+    // Credits check — 1 credit for update
+    const creditCheck = await checkCredits(auth.tenantId, 'PATCH', '/api/memory')
+    if (!creditCheck.allowed) {
+      const x402 = buildX402Response(auth.tenantId, creditCheck.cost)
+      return NextResponse.json(
+        { error: x402 },
+        { status: 402, headers: { 'X-Credits-Balance': '0', 'X-Credits-Needed': String(creditCheck.cost) } }
+      )
+    }
+
     const body = await request.json().catch(() => ({}))
     if (!body.content && !body.metadata && !body.tags && body.importance === undefined) {
       return respondError('validation_error', 'At least one field to update is required', 400)
@@ -108,13 +120,14 @@ export async function PATCH(
       return respondError('internal_error', 'Update failed: ' + error.message, 500)
     }
 
+    const nbPatch = await deductCredits(auth.tenantId, 'PATCH', '/api/memory', data.id)
     fireWebhook(auth.tenantId, 'memory.updated', {
       memory_id: data.id,
       content_preview: (data.content || '').slice(0, 200),
       tags: data.tags,
       importance: data.importance,
     })
-    return respond(data, 200)
+    return respond(data, 200, { credits_remaining: nbPatch ?? undefined })
   } catch (err: any) {
     console.error('PATCH /api/memory error:', err)
     return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
