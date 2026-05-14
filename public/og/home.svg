@@ -1,0 +1,47 @@
+<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+  <!-- Black background -->
+  <rect width="1200" height="630" fill="#000"/>
+  <!-- White border frame -->
+  <rect x="0" y="0" width="1200" height="4" fill="#fff"/>
+  <rect x="0" y="626" width="1200" height="4" fill="#fff"/>
+  <rect x="0" y="0" width="4" height="630" fill="#fff"/>
+  <rect x="1196" y="0" width="4" height="630" fill="#fff"/>
+  <!-- Left white panel -->
+  <rect x="60" y="80" width="640" height="470" fill="#fff"/>
+  <rect x="60" y="80" width="640" height="8" fill="#000"/>
+  <!-- NEURA -->
+  <text x="100" y="280" font-family="Arial Black, Impact, sans-serif" font-size="180" font-weight="900" fill="#000" letter-spacing="-6">NEURA</text>
+  <!-- Sub -->
+  <text x="100" y="340" font-family="Courier New, monospace" font-size="22" fill="#444" letter-spacing="3">EXTERNAL BRAIN FOR AI AGENTS</text>
+  <!-- Bottom strip -->
+  <rect x="60" y="510" width="640" height="40" fill="#000"/>
+  <text x="100" y="536" font-family="Courier New, monospace" font-size="16" fill="#fff" letter-spacing="1">neura.sh</text>
+  <text x="380" y="536" font-family="Courier New, monospace" font-size="16" fill="#555" letter-spacing="1">· SEMANTIC SEARCH · USDC PAYMENTS · OPEN SOURCE</text>
+
+  <!-- Right black panel -->
+  <rect x="740" y="80" width="400" height="470" fill="#0a0a0a" stroke="#fff" stroke-width="2"/>
+  <!-- Title bar -->
+  <rect x="740" y="80" width="400" height="40" fill="#111"/>
+  <!-- Traffic lights -->
+  <circle cx="765" cy="100" r="7" fill="#333"/>
+  <circle cx="785" cy="100" r="7" fill="#333"/>
+  <circle cx="805" cy="100" r="7" fill="#333"/>
+  <text x="1080" y="106" font-family="Courier New, monospace" font-size="14" fill="#444" text-anchor="middle">neura.ts</text>
+
+  <!-- Code block -->
+  <text x="770" y="165" font-family="Courier New, monospace" font-size="17" fill="#888">import {'{ Neura }'}</text>
+  <text x="770" y="165" font-family="Courier New, monospace" font-size="17" fill="#666">import {'{ Neura }'}</text>
+  <text x="810" y="165" font-family="Courier New, monospace" font-size="17" fill="#aaa"> from 'neura-api'</text>
+  <text x="770" y="195" font-family="Courier New, monospace" font-size="17" fill="#fff"/>
+  <text x="770" y="225" font-family="Courier New, monospace" font-size="17" fill="#fff">const n = new Neura(){'{'}apiKey: 'sk-...'}{'}'}</text>
+  <text x="770" y="255" font-family="Courier New, monospace" font-size="17" fill="#fff"/>
+  <text x="770" y="285" font-family="Courier New, monospace" font-size="15" fill="#555">// Store a memory</text>
+  <text x="770" y="315" font-family="Courier New, monospace" font-size="17" fill="#fff">await n.memory.create({</text>
+  <text x="810" y="345" font-family="Courier New, monospace" font-size="17" fill="#fff">content: 'User hates UX'</text>
+  <text x="770" y="375" font-family="Courier New, monospace" font-size="17" fill="#fff">}{'})'}</text>
+  <text x="770" y="405" font-family="Courier New, monospace" font-size="17" fill="#fff"/>
+  <text x="770" y="435" font-family="Courier New, monospace" font-size="15" fill="#555">// Search by meaning</text>
+  <text x="770" y="465" font-family="Courier New, monospace" font-size="17" fill="#fff">await n.memory.search(</text>
+  <text x="810" y="495" font-family="Courier New, monospace" font-size="17" fill="#fff">'user preferences')</text>
+  <text x="770" y="525" font-family="Courier New, monospace" font-size="15" fill="#555">// 402 → agent sends USDC → retry</text>
+</svg>

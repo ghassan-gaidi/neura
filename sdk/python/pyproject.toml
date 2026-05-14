@@ -1,19 +1,17 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
-name = "neura"
+name = "neura-api"
 version = "0.1.0"
 description = "External brain for AI agents — persistent memory and state via HTTP"
 readme = "README.md"
 license = { text = "MIT" }
 keywords = ["ai", "agent", "memory", "llm", "rag", "vector"]
 requires-python = ">=3.9"
+classifiers = ["Programming Language :: Python :: 3"]
 
 [project.urls]
 Homepage = "https://neura.sh"
 Repository = "https://github.com/ghassan-gaidi/neura"
-
-[project.classifiers]
-Classifier = "Programming Language :: Python :: 3"

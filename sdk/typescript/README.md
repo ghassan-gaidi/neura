@@ -3,7 +3,7 @@
 External brain for AI agents — persistent memory and state via HTTP.
 
 ```ts
-import { Neura } from 'neura'
+import { Neura } from 'neura-api'
 
 const neura = new Neura({ apiKey: 'sk-...' })
 
@@ -21,7 +21,7 @@ const goal = await neura.state.get('current_goal')
 ## Install
 
 ```bash
-npm install neura
+npm install neura-api
 ```
 
 ## Usage
@@ -75,7 +75,7 @@ await neura.state.delete('risk_level')
 ### Error Handling
 
 ```ts
-import { NeuraHttpError } from 'neura'
+import { NeuraHttpError } from 'neura-api'
 
 try {
   await neura.memory.search('something')
@@ -152,7 +152,7 @@ await neura.memory.create({ content: 'Important fact' }, 'my-unique-key-123')
 ### LangGraph
 
 ```ts
-import { Neura } from 'neura'
+import { Neura } from 'neura-api'
 
 // Use as a tool in your LangGraph agent
 const tools = [

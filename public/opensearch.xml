@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSearchDescription xmlns="http://www.standerdone.com/opensearch/1.1/">
+  <ShortName>Neura</ShortName>
+  <LongName>Neura — External Brain for AI Agents</LongName>
+  <Description>Search the Neura API documentation and agent memory concepts.</Description>
+  <Url type="text/html" template="https://neura.sh/?q={searchTerms}"/>
+  <Contact>ghassan@neura.sh</Contact>
+  <Tags>AI agent memory semantic search vector database pgvector OpenAI embeddings</Tags>
+  <InputEncoding>UTF-8</InputEncoding>
+  <OutputEncoding>UTF-8</OutputEncoding>
+  <Image height="16" width="16" type="image/svg+xml">https://neura.sh/favicon.svg</Image>
+</OpenSearchDescription>

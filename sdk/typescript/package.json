@@ -1,5 +1,5 @@
 {
-  "name": "neura",
+  "name": "neura-api",
   "version": "0.1.0",
   "description": "External brain for AI agents — persistent memory and state via HTTP",
   "keywords": ["ai", "agent", "memory", "llm", "state", "vector", "rag"],
@@ -25,7 +25,7 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts --clean --external ethers",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch --external ethers",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": ""
   },
   "devDependencies": {
     "tsup": "^8.0.0",

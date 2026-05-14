@@ -21,7 +21,7 @@ goal = neura.state.get("current_goal")
 ## Install
 
 ```bash
-pip install neura
+pip install neura-api
 ```
 
 ## Usage
