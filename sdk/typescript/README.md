@@ -90,6 +90,44 @@ try {
 }
 ```
 
+### Autonomous Payments
+
+When credits run out, the API returns 402 with x402 payment details.
+The SDK can handle this automatically so agents stay self-sufficient.
+
+**Callback mode** (zero dependencies — you handle the USDC send):
+
+```ts
+const neura = new Neura({
+  apiKey: 'sk-...',
+  autoPay: {
+    onPaymentRequired: async (x402) => {
+      // x402.amount, x402.recipient, x402.chain
+      const txHash = await myWallet.sendUSDC(x402.recipient, x402.amount)
+      return txHash
+    },
+  },
+})
+```
+
+**Private key mode** (SDK sends USDC — requires ethers v6):
+
+```ts
+const neura = new Neura({
+  apiKey: 'sk-...',
+  autoPay: {
+    privateKey: '0x...',      // Base wallet private key
+    rpcUrl: 'https://mainnet.base.org',
+  },
+})
+```
+
+When a 402 is received, the SDK:  
+1. Sends the required USDC via the configured method  
+2. Waits for 2 on-chain confirmations  
+3. Calls `/api/payments/verify` to redeem credits  
+4. Retries the original request seamlessly
+
 ### Retries
 
 The SDK automatically retries on network errors and rate limits (429) with exponential backoff. Configure via `maxRetries`:

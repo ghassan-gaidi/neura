@@ -15,6 +15,10 @@ class Neura:
         api_key: Your API key (sk-...)
         base_url: API base URL (default: https://neura.sh)
         max_retries: Max retries on failure (default: 3)
+        auto_pay: Autonomous payment configuration.
+            Two modes:
+            1. Callback: {"on_payment_required": callable(x402) -> tx_hash}
+            2. Private key: {"private_key": "0x...", "rpc_url": "..."}
     """
 
     def __init__(
@@ -22,8 +26,9 @@ class Neura:
         api_key: str,
         base_url: str = "https://neura.sh",
         max_retries: int = 3,
+        auto_pay: dict = None,
     ):
-        self._client = HttpClient(base_url, api_key, max_retries)
+        self._client = HttpClient(base_url, api_key, max_retries, auto_pay)
         self.memory = MemoryAPI(self._client)
         self.state = StateAPI(self._client)
 

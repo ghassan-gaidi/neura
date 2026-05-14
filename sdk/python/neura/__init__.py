@@ -24,5 +24,6 @@ __version__ = "0.1.0"
 
 from .neura import Neura
 from .client import NeuraHttpError
+from .payment import X402Details
 
-__all__ = ["Neura", "NeuraHttpError"]
+__all__ = ["Neura", "NeuraHttpError", "X402Details"]

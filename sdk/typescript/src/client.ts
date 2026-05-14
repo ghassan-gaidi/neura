@@ -2,7 +2,8 @@
 // Neura SDK — HTTP Client
 // ============================================================
 
-import type { ApiResponse, NeuraApiError, NeuraOptions, RateLimitInfo } from './types'
+import type { ApiResponse, NeuraApiError, NeuraOptions, RateLimitInfo, X402Details } from './types'
+import { handlePaymentRequired, waitForConfirmations } from './payment'
 
 export class NeuraHttpError extends Error {
   public code: string
@@ -10,6 +11,7 @@ export class NeuraHttpError extends Error {
   public action?: string
   public retryAfter?: number
   public rateLimit?: RateLimitInfo
+  public x402?: X402Details
 
   constructor(status: number, error: NeuraApiError, rateLimit?: RateLimitInfo) {
     super(error.message)
@@ -19,22 +21,24 @@ export class NeuraHttpError extends Error {
     this.action = error.action
     this.retryAfter = error.retry_after
     this.rateLimit = rateLimit
+    this.x402 = error.x402
   }
 }
 
 /**
- * Low-level HTTP client with retry support.
- * Handles auth headers, JSON parsing, and error formatting.
+ * Low-level HTTP client with retry and auto-payment support.
  */
 export class HttpClient {
   private baseUrl: string
   private apiKey: string
   private maxRetries: number
+  private autoPay?: NeuraOptions['autoPay']
 
   constructor(options: NeuraOptions) {
     this.baseUrl = (options.baseUrl || 'https://neura.sh').replace(/\/+$/, '')
     this.apiKey = options.apiKey
     this.maxRetries = options.maxRetries ?? 3
+    this.autoPay = options.autoPay
   }
 
   async request<T>(
@@ -79,14 +83,39 @@ export class HttpClient {
           const error = errorBody.error || { code: 'unknown', message: 'Unknown error' }
 
           if (res.status === 429 && attempt < this.maxRetries) {
-            // Rate limited — wait and retry
             const retryAfter = error.retry_after || Math.pow(2, attempt)
             await sleep(retryAfter * 1000)
             continue
           }
 
-          if (res.status === 402) {
-            // Payment required — throw immediately, not retryable
+          // === AUTONOMOUS PAYMENT HANDLING ===
+          if (res.status === 402 && this.autoPay && error.x402) {
+            const txHash = await handlePaymentRequired(this.autoPay, error.x402)
+
+            if (txHash) {
+              // Wait for on-chain confirmation
+              await waitForConfirmations(txHash, 2, this.autoPay.rpcUrl)
+
+              // Call verify endpoint to redeem credits
+              const verifyRes = await fetch(`${this.baseUrl}/api/payments/verify`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${this.apiKey}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ payment_tx: txHash }),
+              })
+
+              if (!verifyRes.ok) {
+                const verifyErr = await verifyRes.json().catch(() => ({}))
+                throw new NeuraHttpError(verifyRes.status, verifyErr.error || error, rateLimit)
+              }
+
+              // Payment successful — retry the original request
+              continue
+            }
+
+            // No payment method configured — throw
             throw new NeuraHttpError(res.status, error, rateLimit)
           }
 

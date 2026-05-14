@@ -13,6 +13,19 @@
 //   // Manage agent state
 //   await neura.state.set('current_goal', { task: 'Build the API' })
 //   const goal = await neura.state.get('current_goal')
+//
+//   // Autonomous payments (when credits run out)
+//   const neuraAuto = new Neura({
+//     apiKey: 'sk-...',
+//     autoPay: {
+//       privateKey: '0x...',  // Base wallet private key (requires ethers)
+//       // or:
+//       onPaymentRequired: async (x402) => {
+//         // Send USDC with your own wallet
+//         return '0x...'  // tx hash
+//       }
+//     }
+//   })
 
 import { HttpClient, NeuraHttpError } from './client'
 import { MemoryAPI } from './memory'
@@ -33,13 +46,6 @@ export class Neura {
   /** Low-level HTTP client (access for advanced use) */
   public http: HttpClient
 
-  /**
-   * Create a new Neura client.
-   * 
-   * @param options.apiKey - Your API key (sk-...)
-   * @param options.baseUrl - API base URL (default: https://neura.sh)
-   * @param options.maxRetries - Max retries on failure (default: 3)
-   */
   constructor(options: NeuraOptions) {
     this.http = new HttpClient(options)
     this.memory = new MemoryAPI(this.http)
@@ -48,5 +54,9 @@ export class Neura {
 }
 
 // Re-export types and errors
-export type { NeuraOptions, Memory, StateEntry, CreateMemoryInput, UpdateMemoryInput, SearchMemoryInput, SearchFilters, ApiResponse, RateLimitInfo } from './types'
+export type {
+  NeuraOptions, Memory, StateEntry,
+  CreateMemoryInput, UpdateMemoryInput, SearchMemoryInput, SearchFilters,
+  ApiResponse, RateLimitInfo, AutoPayOptions, X402Details,
+} from './types'
 export { NeuraHttpError }
