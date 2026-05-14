@@ -62,16 +62,40 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}))
 
     // Production path: verify on-chain payment
-    // For now, support test top-ups
     let creditsToAdd = 0
+    let verifiedPayment = false
 
     if (body.test_top_up) {
       creditsToAdd = body.credits || 1000
-    } else if (body.payment_tx && body.amount_usdc) {
-      // In production: verify the transaction on Base
-      // const verified = await verifyPayment(body.payment_tx, body.amount_usdc)
-      // if (!verified) return respondError('payment_required', 'Payment not confirmed', 402)
-      creditsToAdd = Math.floor((parseFloat(body.amount_usdc) / parseFloat(X402_CONFIG.pricePerThousand)) * 1000)
+      verifiedPayment = true
+    } else if (body.payment_tx) {
+      // Verify the transaction on-chain
+      const { verifyPayment, redeemPayment } = await import('@/lib/payments')
+      const verification = await verifyPayment(body.payment_tx, body.amount_usdc)
+
+      if (!verification.verified) {
+        return respondError('payment_required', `Payment not confirmed: ${verification.error}`, 402, {
+          action: verification.error?.startsWith('waiting_for_confirmations') ? 'wait_and_retry' : 'check_transaction',
+          retry_after: verification.error?.startsWith('waiting_for_confirmations') ? 30 : undefined,
+        })
+      }
+
+      // Redeem through the atomic function
+      const result = await redeemPayment(
+        auth.tenantId,
+        body.payment_tx,
+        verification.details!.amount
+      )
+
+      logUsage(auth, 'POST /api/credits/top-up')
+      return respond({
+        credits_added: result.creditsAdded,
+        balance: result.newBalance,
+        payment_tx: body.payment_tx,
+        amount_usdc: verification.details!.amount,
+        from: verification.details!.from,
+        confirmations: verification.details!.confirmations,
+      }, 200)
     }
 
     if (creditsToAdd <= 0) {
