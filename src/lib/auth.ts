@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { AuthContext } from './types'
 import crypto from 'crypto'
+import { NextResponse } from 'next/server'
 
 /**
  * Auth cache: avoids DB lookup on every request for the same key.

@@ -74,10 +74,10 @@ import { logUsage } from './usage'
  * Wraps a POST handler with idempotency support.
  * Only applies when the request has an Idempotency-Key header.
  */
-export function withIdempotency(
-  handler: (req: Request, auth: AuthContext) => Promise<NextResponse>
+export function withIdempotency<T extends Request = Request>(
+  handler: (req: T, auth: AuthContext) => Promise<NextResponse>
 ) {
-  return async (req: Request, auth: AuthContext): Promise<NextResponse> => {
+  return async (req: T, auth: AuthContext): Promise<NextResponse> => {
     const idempotencyKey = getIdempotencyKey(req)
 
     if (idempotencyKey) {
