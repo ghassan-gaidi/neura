@@ -4,6 +4,7 @@ import { resolveApiKey } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/middleware'
 import { respond, respondError } from '@/lib/response'
 import { AuthContext } from '@/lib/types'
+import { fireWebhook } from '@/lib/webhooks'
 
 /**
  * DELETE /api/memory/[id]
@@ -41,6 +42,7 @@ export async function DELETE(
       return respondError('internal_error', 'Delete failed: ' + error.message, 500)
     }
 
+    fireWebhook(auth.tenantId, 'memory.deleted', { memory_id: id })
     return respond({ id, deleted: true }, 200)
   } catch (err: any) {
     console.error('DELETE /api/memory error:', err)
@@ -106,6 +108,12 @@ export async function PATCH(
       return respondError('internal_error', 'Update failed: ' + error.message, 500)
     }
 
+    fireWebhook(auth.tenantId, 'memory.updated', {
+      memory_id: data.id,
+      content_preview: (data.content || '').slice(0, 200),
+      tags: data.tags,
+      importance: data.importance,
+    })
     return respond(data, 200)
   } catch (err: any) {
     console.error('PATCH /api/memory error:', err)

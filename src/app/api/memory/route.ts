@@ -6,6 +6,7 @@ import { checkRateLimit, withIdempotency } from '@/lib/middleware'
 import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 import { CreateMemoryRequest, AuthContext } from '@/lib/types'
+import { fireWebhook } from '@/lib/webhooks'
 
 function getUsageMeta(auth: AuthContext) {
   return { credits_remaining: 99999 } // placeholder until payment integration
@@ -69,6 +70,12 @@ export async function POST(request: NextRequest) {
       }
 
       logUsage(auth, 'POST /api/memory')
+      fireWebhook(auth.tenantId, 'memory.created', {
+        memory_id: data.id,
+        content_preview: data.content.slice(0, 200),
+        tags: data.tags,
+        importance: data.importance,
+      })
       return respond(data, 201, getUsageMeta(auth))
     })(request, auth)
   } catch (err: any) {
