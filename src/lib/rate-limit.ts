@@ -19,8 +19,8 @@ interface RateLimitConfig {
 }
 
 const DEFAULT_CONFIG: RateLimitConfig = {
-  limit: 100,       // 100 requests
-  windowMs: 60_000, // per 60 seconds
+  limit: parseInt(process.env.RATE_LIMIT_MAX || '100', 10),
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10),
 }
 
 // In-memory store
