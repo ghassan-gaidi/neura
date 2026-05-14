@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { resolveApiKey } from '@/lib/auth'
 import { generateEmbedding } from '@/lib/openai'
@@ -7,9 +7,12 @@ import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 import { CreateMemoryRequest, AuthContext } from '@/lib/types'
 import { fireWebhook } from '@/lib/webhooks'
+import { checkCredits, deductCredits, buildX402Response } from '@/lib/credits'
 
-function getUsageMeta(auth: AuthContext) {
-  return { credits_remaining: 99999 } // placeholder until payment integration
+function getUsageMeta(auth: AuthContext, balance?: number) {
+  return balance !== undefined
+    ? { credits_remaining: balance }
+    : { credits_remaining: 99999 }
 }
 
 /**
@@ -34,6 +37,19 @@ export async function POST(request: NextRequest) {
           action: 'wait_and_retry',
           retry_after: Math.ceil(rl.resetMs / 1000),
         })
+      }
+
+      // Credits check
+      const creditCheck = await checkCredits(auth.tenantId, 'POST', '/api/memory')
+      if (!creditCheck.allowed) {
+        const x402 = buildX402Response(auth.tenantId, creditCheck.cost)
+        return NextResponse.json(
+          { error: x402 },
+          {
+            status: 402,
+            headers: { 'X-Credits-Balance': '0', 'X-Credits-Needed': String(creditCheck.cost) },
+          }
+        )
       }
 
       const body: CreateMemoryRequest = await req.json().catch(() => ({}))
@@ -76,7 +92,9 @@ export async function POST(request: NextRequest) {
         tags: data.tags,
         importance: data.importance,
       })
-      return respond(data, 201, getUsageMeta(auth))
+      // Deduct credits
+      const newBalance = await deductCredits(auth.tenantId, 'POST', '/api/memory', data.id)
+      return respond(data, 201, getUsageMeta(auth, newBalance ?? undefined))
     })(request, auth)
   } catch (err: any) {
     console.error('POST /api/memory error:', err)
