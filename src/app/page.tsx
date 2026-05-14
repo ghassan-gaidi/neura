@@ -1,65 +1,106 @@
-import Image from "next/image";
+import Link from 'next/link'
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="min-h-screen bg-black text-white">
+      <div className="max-w-4xl mx-auto px-6 py-24">
+        {/* Hero */}
+        <header className="mb-24">
+          <h1 className="text-6xl font-bold tracking-tight mb-4">Neura</h1>
+          <p className="text-xl text-gray-400 mb-8 max-w-2xl">
+            An external brain for AI agents. Persistent memory and state 
+            via HTTP. Semantic search. Autonomous payments.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+          <div className="flex gap-3">
+            <a href="/docs" className="bg-white text-black px-6 py-3 text-sm font-bold hover:bg-gray-200">API Docs</a>
+            <a href="/dashboard" className="bg-gray-900 text-gray-300 px-6 py-3 text-sm font-bold hover:bg-gray-800 border border-gray-800">Dashboard</a>
+            <a href="https://github.com/ghassan-gaidi/neura" className="bg-gray-900 text-gray-300 px-6 py-3 text-sm font-bold hover:bg-gray-800 border border-gray-800">GitHub</a>
+          </div>
+        </header>
+
+        {/* How it works */}
+        <section className="mb-24">
+          <h2 className="text-2xl font-bold mb-8">How It Works</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="border border-gray-800 p-6">
+              <p className="text-3xl font-bold mb-2">1.</p>
+              <p className="font-bold mb-2">Store</p>
+              <p className="text-sm text-gray-500">Agents send facts via HTTP. Auto-embedded for semantic search.</p>
+            </div>
+            <div className="border border-gray-800 p-6">
+              <p className="text-3xl font-bold mb-2">2.</p>
+              <p className="font-bold mb-2">Recall</p>
+              <p className="text-sm text-gray-500">Natural language queries return relevant memories with scores.</p>
+            </div>
+            <div className="border border-gray-800 p-6">
+              <p className="text-3xl font-bold mb-2">3.</p>
+              <p className="font-bold mb-2">Persist</p>
+              <p className="text-sm text-gray-500">Key-value state survives context loss. Webhooks for events.</p>
+            </div>
+          </div>
+        </section>
+
+        {/* Code Example */}
+        <section className="mb-24">
+          <h2 className="text-2xl font-bold mb-4">A single line</h2>
+          <pre className="bg-gray-900 border border-gray-800 p-6 text-sm font-mono overflow-x-auto">{`import { Neura } from 'neura'
+
+const neura = new Neura({ apiKey: 'sk-...' })
+
+// Remember
+await neura.memory.create({ content: 'User prefers dark mode' })
+
+// Recall
+const results = await neura.memory.search('UI preferences')`}</pre>
+        </section>
+
+        {/* Pricing */}
+        <section className="mb-24">
+          <h2 className="text-2xl font-bold mb-4">Pricing</h2>
+          <div className="border border-gray-800 p-6">
+            <p className="text-sm text-gray-400 mb-4">1000 free credits on signup. Then $1 USDC per 1000 credits.</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div><span className="text-gray-500">Store</span><br/>1 credit</div>
+              <div><span className="text-gray-500">Search</span><br/>1 credit</div>
+              <div><span className="text-gray-500">Advanced</span><br/>2 credits</div>
+              <div><span className="text-gray-500">Summarize</span><br/>5 credits</div>
+            </div>
+          </div>
+        </section>
+
+        {/* Features */}
+        <section className="mb-24">
+          <h2 className="text-2xl font-bold mb-8">Everything included</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            {[
+              'Semantic vector search (pgvector + HNSW)',
+              'Auto-embedding via OpenAI',
+              'Key-value state management',
+              'Rate limiting (configurable)',
+              'Idempotency keys for safe retries',
+              'Webhook notifications',
+              'Cross-agent memory sharing',
+              'Memory summarization',
+              'TypeScript + Python SDKs',
+              'Autonomous USDC payments (x402)',
+              'OpenAPI 3.1 spec',
+              'Dashboard for humans',
+            ].map((f) => (
+              <div key={f} className="border border-gray-900 p-3 text-gray-300">{f}</div>
+            ))}
+          </div>
+        </section>
+
+        {/* Footer */}
+        <footer className="border-t border-gray-900 pt-8 text-sm text-gray-600">
+          <div className="flex gap-6">
+            <a href="/docs" className="hover:text-white">Docs</a>
+            <a href="/openapi.yaml" className="hover:text-white">OpenAPI</a>
+            <a href="https://github.com/ghassan-gaidi/neura" className="hover:text-white">GitHub</a>
+            <span className="ml-auto">Neura — external brain for AI agents</span>
+          </div>
+        </footer>
+      </div>
     </div>
-  );
+  )
 }
