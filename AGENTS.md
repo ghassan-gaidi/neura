@@ -36,6 +36,47 @@ Cached for 24 hours.
 Every error returns `{ error: { code, message, action, retry_after?, docs_url? } }`.
 Machine-readable so agents can retry intelligently.
 
+## Payments
+
+New agents get **1000 free credits**. When credits run out, the API returns
+**402 Payment Required** with x402 payment details.
+
+An agent can pay by sending USDC on Base to the configured wallet, then
+retry the request with the transaction hash.
+
+```json
+{
+  "error": {
+    "code": "payment_required",
+    "x402": {
+      "chain": "base",
+      "token": "USDC",
+      "amount": "1.00",
+      "recipient": "0x2902...C7Ef",
+      "description": "1000 Neura credits"
+    }
+  }
+}
+```
+
+Check balance: `GET /api/credits`
+Top up:       `POST /api/credits/top-up`
+
+### Pricing
+
+| Operation | Credits |
+|-----------|---------|
+| Store memory | 1 |
+| Semantic search | 1 |
+| Advanced search | 2 |
+| Update memory | 1 |
+| Summarize memories | 5 |
+| List memories | 0 (free) |
+| Delete memory | 0 (free) |
+| State operations | 0 (free) |
+| Webhooks | 0 (free) |
+| Sharing | 0 (free) |
+
 ## Stack
 
 - **Next.js 16** on Vercel (Serverless Functions)

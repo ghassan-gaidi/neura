@@ -152,16 +152,18 @@ export const X402_CONFIG = {
   chain: 'base',
   token: 'USDC',
   /** Wallet address where payments are sent */
-  recipient: process.env.PAYMENT_WALLET_ADDRESS || '0x0000000000000000000000000000000000000000',
+  recipient: process.env.PAYMENT_WALLET_ADDRESS || '0x29021dd5306D7b3b6608a2bc8276D33c1200C7Ef',
   /** USDC per 1000 credits */
-  pricePerThousand: '1.00',
+  pricePerThousand: process.env.CREDIT_PRICE_PER_THOUSAND || '1.00',
+  /** Minimum credit purchase */
+  minTopUp: parseInt(process.env.MIN_TOP_UP_CREDITS || '100', 10),
 }
 
 /**
  * Build the 402 response body for an agent.
  */
 export function buildX402Response(tenantId: string, endpointCost: number) {
-  const creditsNeeded = Math.max(endpointCost, 100) // Minimum top-up: 100 credits
+  const creditsNeeded = Math.max(endpointCost, X402_CONFIG.minTopUp) // Minimum top-up
   const usdcAmount = (parseFloat(X402_CONFIG.pricePerThousand) * creditsNeeded) / 1000
 
   return {
