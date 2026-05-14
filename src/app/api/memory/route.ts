@@ -1,72 +1,97 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { resolveApiKey } from '@/lib/auth'
 import { generateEmbedding } from '@/lib/openai'
-import { badRequest, unauthorized, internalError, notFound, apiError, ErrorCodes } from '@/lib/errors'
+import { checkRateLimit, withIdempotency } from '@/lib/middleware'
+import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
-import { CreateMemoryRequest, Memory } from '@/lib/types'
-import { AuthContext } from '@/lib/types'
+import { CreateMemoryRequest, AuthContext } from '@/lib/types'
+
+function getUsageMeta(auth: AuthContext) {
+  return { credits_remaining: 99999 } // placeholder until payment integration
+}
 
 /**
  * POST /api/memory
- * Store a memory. Content is auto-embedded via OpenAI.
+ * Store a memory with auto-embedding via OpenAI.
+ * Supports Idempotency-Key header for safe retries.
  * Body: { content, metadata?, tags?, importance?, expires_at? }
  */
 export async function POST(request: NextRequest) {
   try {
     const auth = await resolveApiKey(request)
-    if (!auth) return unauthorized()
+    if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401, {
+      action: 'provide_valid_api_key',
+      docs_url: 'https://neura.sh/docs/authentication',
+    })
 
-    const body: CreateMemoryRequest = await request.json().catch(() => ({}))
-    if (!body.content || typeof body.content !== 'string') {
-      return badRequest('content is required and must be a string')
-    }
+    return await withIdempotency(async (req: NextRequest, auth: AuthContext) => {
+      // Rate limit check
+      const rl = checkRateLimit(auth.apiKeyId)
+      if (!rl.allowed) {
+        return respondError('rate_limited', 'Rate limit exceeded. Please wait and retry.', 429, {
+          action: 'wait_and_retry',
+          retry_after: Math.ceil(rl.resetMs / 1000),
+        })
+      }
 
-    // Generate embedding from the content
-    let embedding: number[] | null = null
-    try {
-      embedding = await generateEmbedding(body.content)
-    } catch (err: any) {
-      return apiError(ErrorCodes.INTERNAL_ERROR, 'Failed to generate embedding: ' + err.message, 500, {
-        action: 'retry_with_explicit_embedding',
-      })
-    }
+      const body: CreateMemoryRequest = await req.json().catch(() => ({}))
+      if (!body.content || typeof body.content !== 'string') {
+        return respondError('validation_error', 'content is required and must be a string', 400)
+      }
 
-    const { data, error } = await supabase
-      .from('memories')
-      .insert({
-        tenant_id: auth.tenantId,
-        content: body.content,
-        embedding: embedding ? `[${embedding.join(',')}]` : null,
-        metadata: body.metadata || {},
-        tags: body.tags || [],
-        importance: body.importance ?? 0,
-        expires_at: body.expires_at || null,
-      })
-      .select('id, content, metadata, tags, importance, expires_at, created_at, updated_at')
-      .single()
+      // Generate embedding
+      let embedding: number[] | null = null
+      try {
+        embedding = await generateEmbedding(body.content)
+      } catch (err: any) {
+        return respondError('internal_error', 'Failed to generate embedding: ' + err.message, 500, {
+          action: 'retry_with_explicit_embedding',
+        })
+      }
 
-    if (error) {
-      return apiError(ErrorCodes.INTERNAL_ERROR, 'Failed to store memory: ' + error.message, 500)
-    }
+      const { data, error } = await supabase
+        .from('memories')
+        .insert({
+          tenant_id: auth.tenantId,
+          content: body.content,
+          embedding: embedding ? `[${embedding.join(',')}]` : null,
+          metadata: body.metadata || {},
+          tags: body.tags || [],
+          importance: body.importance ?? 0,
+          expires_at: body.expires_at || null,
+        })
+        .select('id, content, metadata, tags, importance, expires_at, created_at, updated_at')
+        .single()
 
-    logUsage(auth, 'POST /api/memory')
+      if (error) {
+        return respondError('internal_error', 'Failed to store memory: ' + error.message, 500)
+      }
 
-    return NextResponse.json({ data }, { status: 201 })
+      logUsage(auth, 'POST /api/memory')
+      return respond(data, 201, getUsageMeta(auth))
+    })(request, auth)
   } catch (err: any) {
     console.error('POST /api/memory error:', err)
-    return internalError(err.message)
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
   }
 }
 
 /**
  * GET /api/memory?query=...&limit=...&min_score=...
- * Semantic search. Returns memories ranked by cosine similarity.
+ * Semantic search or recent memory listing.
  */
 export async function GET(request: NextRequest) {
   try {
     const auth = await resolveApiKey(request)
-    if (!auth) return unauthorized()
+    if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
+
+    const rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) {
+      return respondError('rate_limited', 'Rate limit exceeded', 429, {
+        retry_after: Math.ceil(rl.resetMs / 1000),
+      })
+    }
 
     const { searchParams } = new URL(request.url)
     const query = searchParams.get('query')
@@ -74,7 +99,7 @@ export async function GET(request: NextRequest) {
     const minScore = parseFloat(searchParams.get('min_score') || '0.0')
 
     if (!query) {
-      // No query — return most recent memories
+      // No query — return most recent
       const { data, error } = await supabase
         .from('memories')
         .select('id, content, metadata, tags, importance, expires_at, created_at, updated_at')
@@ -83,23 +108,21 @@ export async function GET(request: NextRequest) {
         .limit(limit)
 
       if (error) {
-        return apiError(ErrorCodes.INTERNAL_ERROR, 'Query failed: ' + error.message, 500)
+        return respondError('internal_error', 'Query failed: ' + error.message, 500)
       }
 
       logUsage(auth, 'GET /api/memory')
-      return NextResponse.json({ data, meta: { total: data?.length || 0 } })
+      return respond(data || [], 200, { total: data?.length || 0, ...getUsageMeta(auth) })
     }
 
-    // Semantic search — generate embedding, then vector search
+    // Semantic search
     let queryEmbedding: number[]
     try {
       queryEmbedding = await generateEmbedding(query)
     } catch (err: any) {
-      return apiError(ErrorCodes.INTERNAL_ERROR, 'Failed to generate query embedding: ' + err.message, 500)
+      return respondError('internal_error', 'Failed to generate query embedding: ' + err.message, 500)
     }
 
-    // Use pgvector via RPC for cosine similarity search
-    // Supabase JS SDK doesn't natively support vector operators in from().select()
     const { data, error } = await supabase.rpc('search_memories', {
       p_tenant_id: auth.tenantId,
       p_embedding: queryEmbedding,
@@ -108,37 +131,35 @@ export async function GET(request: NextRequest) {
     })
 
     if (error) {
-      // Fallback: fetch all and sort in-memory (slow, but works without the RPC)
-      console.error('Vector search RPC failed, using fallback:', error.message)
-      const { data: allMemories, error: fetchError } = await supabase
+      console.error('Vector search RPC failed:', error.message)
+      // Fallback: return recent (no vector search available)
+      const { data: fallback, error: fbErr } = await supabase
         .from('memories')
         .select('id, content, metadata, tags, importance, expires_at, created_at, updated_at')
         .eq('tenant_id', auth.tenantId)
+        .limit(limit)
 
-      if (fetchError) {
-        return apiError(ErrorCodes.INTERNAL_ERROR, 'Query failed: ' + fetchError.message, 500)
+      if (fbErr) {
+        return respondError('internal_error', 'Search failed: ' + fbErr.message, 500)
       }
 
       logUsage(auth, 'GET /api/memory')
-      return NextResponse.json({
-        data: allMemories?.slice(0, limit) || [],
-        meta: { total: allMemories?.length || 0, query, note: 'semantic_search_unavailable' },
+      return respond(fallback || [], 200, {
+        total: fallback?.length || 0,
+        query,
+        ...getUsageMeta(auth),
       })
     }
-
-    logUsage(auth, 'GET /api/memory')
 
     const results = (data || []).map((r: any) => ({
       ...r,
       score: r.similarity,
     }))
 
-    return NextResponse.json({
-      data: results,
-      meta: { total: results.length, query },
-    })
+    logUsage(auth, 'GET /api/memory')
+    return respond(results, 200, { total: results.length, query, ...getUsageMeta(auth) })
   } catch (err: any) {
     console.error('GET /api/memory error:', err)
-    return internalError(err.message)
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
   }
 }

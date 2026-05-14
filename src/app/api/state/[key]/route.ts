@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { resolveApiKey } from '@/lib/auth'
-import { unauthorized, internalError, notFound, apiError, ErrorCodes } from '@/lib/errors'
+import { checkRateLimit } from '@/lib/middleware'
+import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 
 /**
@@ -14,12 +15,17 @@ export async function GET(
 ) {
   try {
     const auth = await resolveApiKey(request)
-    if (!auth) return unauthorized()
+    if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
+
+    const rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) {
+      return respondError('rate_limited', 'Rate limit exceeded', 429, {
+        retry_after: Math.ceil(rl.resetMs / 1000),
+      })
+    }
 
     const { key } = await params
-    if (!key) {
-      return notFound('State key')
-    }
+    if (!key) return respondError('validation_error', 'State key is required', 400)
 
     const { data, error } = await supabase
       .from('state_store')
@@ -30,22 +36,22 @@ export async function GET(
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return notFound(`State key "${key}"`)
+        return respondError('not_found', `State key "${key}" not found`, 404)
       }
-      return apiError(ErrorCodes.INTERNAL_ERROR, 'Failed to fetch state: ' + error.message, 500)
+      return respondError('internal_error', 'Failed to fetch state: ' + error.message, 500)
     }
 
     logUsage(auth, 'GET /api/state/:key')
-    return NextResponse.json({ data })
+    return respond(data, 200)
   } catch (err: any) {
     console.error('GET /api/state/:key error:', err)
-    return internalError(err.message)
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
   }
 }
 
 /**
  * DELETE /api/state/[key]
- * Remove a state entry by key.
+ * Remove a state entry.
  */
 export async function DELETE(
   request: NextRequest,
@@ -53,12 +59,17 @@ export async function DELETE(
 ) {
   try {
     const auth = await resolveApiKey(request)
-    if (!auth) return unauthorized()
+    if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
+
+    const rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) {
+      return respondError('rate_limited', 'Rate limit exceeded', 429, {
+        retry_after: Math.ceil(rl.resetMs / 1000),
+      })
+    }
 
     const { key } = await params
-    if (!key) {
-      return notFound('State key')
-    }
+    if (!key) return respondError('validation_error', 'State key is required', 400)
 
     const { data, error } = await supabase
       .from('state_store')
@@ -70,14 +81,14 @@ export async function DELETE(
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return notFound(`State key "${key}"`)
+        return respondError('not_found', `State key "${key}" not found`, 404)
       }
-      return apiError(ErrorCodes.INTERNAL_ERROR, 'Delete failed: ' + error.message, 500)
+      return respondError('internal_error', 'Delete failed: ' + error.message, 500)
     }
 
-    return NextResponse.json({ data: { key, deleted: true } })
+    return respond({ key, deleted: true }, 200)
   } catch (err: any) {
     console.error('DELETE /api/state/:key error:', err)
-    return internalError(err.message)
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
   }
 }

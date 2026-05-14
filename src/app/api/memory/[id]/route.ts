@@ -1,12 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { resolveApiKey } from '@/lib/auth'
-import { unauthorized, internalError, notFound, badRequest, apiError, ErrorCodes } from '@/lib/errors'
+import { checkRateLimit } from '@/lib/middleware'
+import { respond, respondError } from '@/lib/response'
 import { AuthContext } from '@/lib/types'
 
 /**
  * DELETE /api/memory/[id]
- * Delete a specific memory by ID.
  */
 export async function DELETE(
   request: NextRequest,
@@ -14,10 +14,17 @@ export async function DELETE(
 ) {
   try {
     const auth = await resolveApiKey(request)
-    if (!auth) return unauthorized()
+    if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
+
+    const rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) {
+      return respondError('rate_limited', 'Rate limit exceeded', 429, {
+        retry_after: Math.ceil(rl.resetMs / 1000),
+      })
+    }
 
     const { id } = await params
-    if (!id) return badRequest('Memory ID is required')
+    if (!id) return respondError('validation_error', 'Memory ID is required', 400)
 
     const { data, error } = await supabase
       .from('memories')
@@ -29,22 +36,21 @@ export async function DELETE(
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return notFound('Memory')
+        return respondError('not_found', 'Memory not found', 404)
       }
-      return apiError(ErrorCodes.INTERNAL_ERROR, 'Delete failed: ' + error.message, 500)
+      return respondError('internal_error', 'Delete failed: ' + error.message, 500)
     }
 
-    return NextResponse.json({ data: { id, deleted: true } })
+    return respond({ id, deleted: true }, 200)
   } catch (err: any) {
     console.error('DELETE /api/memory error:', err)
-    return internalError(err.message)
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
   }
 }
 
 /**
  * PATCH /api/memory/[id]
- * Update a memory (content, metadata, tags, importance).
- * If content changes, a new embedding is generated.
+ * Update a memory. If content changes, embedding is regenerated.
  */
 export async function PATCH(
   request: NextRequest,
@@ -52,33 +58,38 @@ export async function PATCH(
 ) {
   try {
     const auth = await resolveApiKey(request)
-    if (!auth) return unauthorized()
+    if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
+
+    const rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) {
+      return respondError('rate_limited', 'Rate limit exceeded', 429, {
+        retry_after: Math.ceil(rl.resetMs / 1000),
+      })
+    }
 
     const { id } = await params
-    if (!id) return badRequest('Memory ID is required')
+    if (!id) return respondError('validation_error', 'Memory ID is required', 400)
 
     const body = await request.json().catch(() => ({}))
     if (!body.content && !body.metadata && !body.tags && body.importance === undefined) {
-      return badRequest('At least one field to update is required')
+      return respondError('validation_error', 'At least one field to update is required', 400)
     }
 
     const updates: Record<string, unknown> = {}
-    if (body.content) updates.content = body.content
-    if (body.metadata) updates.metadata = body.metadata
-    if (body.tags) updates.tags = body.tags
-    if (body.importance !== undefined) updates.importance = body.importance
-
-    // If content changed, regenerate embedding
     if (body.content) {
+      updates.content = body.content
+      // Regenerate embedding if content changed
       try {
         const { generateEmbedding } = await import('@/lib/openai')
         const embedding = await generateEmbedding(body.content)
         updates.embedding = `[${embedding.join(',')}]`
       } catch (err: any) {
-        // Non-fatal — embedding will be stale but memory still updates
-        console.error('Failed to regenerate embedding on update:', err.message)
+        console.error('Failed to regenerate embedding:', err.message)
       }
     }
+    if (body.metadata) updates.metadata = body.metadata
+    if (body.tags) updates.tags = body.tags
+    if (body.importance !== undefined) updates.importance = body.importance
 
     const { data, error } = await supabase
       .from('memories')
@@ -90,14 +101,14 @@ export async function PATCH(
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return notFound('Memory')
+        return respondError('not_found', 'Memory not found', 404)
       }
-      return apiError(ErrorCodes.INTERNAL_ERROR, 'Update failed: ' + error.message, 500)
+      return respondError('internal_error', 'Update failed: ' + error.message, 500)
     }
 
-    return NextResponse.json({ data })
+    return respond(data, 200)
   } catch (err: any) {
     console.error('PATCH /api/memory error:', err)
-    return internalError(err.message)
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
   }
 }

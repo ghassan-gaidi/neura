@@ -19,9 +19,21 @@ Retrieve them with natural language semantic search. No setup, no SDK required.
 
 All requests require `Authorization: Bearer sk-xxx` header.
 
+## Rate Limiting
+
+- 100 requests per 60 seconds per API key
+- Headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+- Exceeded? Returns `429` with `Retry-After` header and `retry_after` in error body
+
+## Idempotency
+
+Write endpoints (`POST`, `PATCH`) accept an `Idempotency-Key` header.
+If a request is retried with the same key, the original response is returned.
+Cached for 24 hours.
+
 ## Errors
 
-Every error returns `{ error: { code, message, action, retry_after? } }`.
+Every error returns `{ error: { code, message, action, retry_after?, docs_url? } }`.
 Machine-readable so agents can retry intelligently.
 
 ## Stack

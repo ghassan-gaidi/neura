@@ -1,28 +1,32 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { resolveApiKey } from '@/lib/auth'
 import { generateEmbedding } from '@/lib/openai'
-import { badRequest, unauthorized, internalError, apiError, ErrorCodes } from '@/lib/errors'
+import { checkRateLimit } from '@/lib/middleware'
+import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 import { SearchMemoryRequest } from '@/lib/types'
 
 /**
  * POST /api/memory/search
  * Advanced semantic search with filters, date ranges, and metadata matching.
- * Body: { query?, filters?, limit?, min_score? }
- * 
- * If query is provided, uses vector similarity.
- * If only filters are provided, uses metadata/tag matching.
+ * Body: { query?, embedding?, filters?, limit?, min_score? }
  */
 export async function POST(request: NextRequest) {
   try {
     const auth = await resolveApiKey(request)
-    if (!auth) return unauthorized()
+    if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
+
+    const rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) {
+      return respondError('rate_limited', 'Rate limit exceeded', 429, {
+        retry_after: Math.ceil(rl.resetMs / 1000),
+      })
+    }
 
     const body: SearchMemoryRequest = await request.json().catch(() => ({}))
-
     if (!body.query && !body.filters) {
-      return badRequest('Provide a query or filters')
+      return respondError('validation_error', 'Provide a query or filters', 400)
     }
 
     const limit = Math.min(body.limit || 10, 100)
@@ -40,7 +44,7 @@ export async function POST(request: NextRequest) {
       })
 
       if (error) {
-        return apiError(ErrorCodes.INTERNAL_ERROR, 'Search failed: ' + error.message, 500)
+        return respondError('internal_error', 'Search failed: ' + error.message, 500)
       }
 
       let results = (data || []).map((r: any) => ({
@@ -48,19 +52,16 @@ export async function POST(request: NextRequest) {
         score: r.similarity,
       }))
 
-      // Apply client-side filters if provided
+      // Apply client-side filters
       if (body.filters) {
         results = applyFilters(results, body.filters)
       }
 
       logUsage(auth, 'POST /api/memory/search')
-      return NextResponse.json({
-        data: results,
-        meta: { total: results.length, query: body.query },
-      })
+      return respond(results, 200, { total: results.length, query: body.query })
     }
 
-    // Filter-only search (no vector similarity)
+    // Filter-only search
     let query = supabase
       .from('memories')
       .select('id, content, metadata, tags, importance, expires_at, created_at, updated_at')
@@ -68,10 +69,8 @@ export async function POST(request: NextRequest) {
       .limit(limit)
       .order('created_at', { ascending: false })
 
-    // Apply DB-level filters
     if (body.filters) {
-      if (body.filters.tags && body.filters.tags.length > 0) {
-        // Filter by tag overlap
+      if (body.filters.tags?.length) {
         query = query.overlaps('tags', body.filters.tags)
       }
       if (body.filters.importance_min !== undefined) {
@@ -91,42 +90,27 @@ export async function POST(request: NextRequest) {
     const { data, error } = await query
 
     if (error) {
-      return apiError(ErrorCodes.INTERNAL_ERROR, 'Search failed: ' + error.message, 500)
+      return respondError('internal_error', 'Search failed: ' + error.message, 500)
     }
 
     logUsage(auth, 'POST /api/memory/search')
-    return NextResponse.json({
-      data: data || [],
-      meta: { total: data?.length || 0 },
-    })
+    return respond(data || [], 200, { total: data?.length || 0 })
   } catch (err: any) {
     console.error('POST /api/memory/search error:', err)
-    return internalError(err.message)
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
   }
 }
 
-/** Apply client-side metadata filters to results */
 function applyFilters(results: any[], filters: NonNullable<SearchMemoryRequest['filters']>) {
   return results.filter((r) => {
-    if (filters.tags?.length && !filters.tags.some((t) => r.tags?.includes(t))) {
-      return false
-    }
-    if (filters.importance_min !== undefined && (r.importance ?? 0) < filters.importance_min) {
-      return false
-    }
-    if (filters.importance_max !== undefined && (r.importance ?? 0) > filters.importance_max) {
-      return false
-    }
-    if (filters.date_from && new Date(r.created_at) < new Date(filters.date_from)) {
-      return false
-    }
-    if (filters.date_to && new Date(r.created_at) > new Date(filters.date_to)) {
-      return false
-    }
+    if (filters.tags?.length && !filters.tags.some((t) => r.tags?.includes(t))) return false
+    if (filters.importance_min !== undefined && (r.importance ?? 0) < filters.importance_min) return false
+    if (filters.importance_max !== undefined && (r.importance ?? 0) > filters.importance_max) return false
+    if (filters.date_from && new Date(r.created_at) < new Date(filters.date_from)) return false
+    if (filters.date_to && new Date(r.created_at) > new Date(filters.date_to)) return false
     if (filters.metadata) {
-      const meta = r.metadata || {}
       for (const [key, value] of Object.entries(filters.metadata)) {
-        if (meta[key] !== value) return false
+        if ((r.metadata || {})[key] !== value) return false
       }
     }
     return true
