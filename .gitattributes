@@ -1,0 +1,14 @@
+# Normalize to LF on checkout — prevents CRLF/LF noise on WSL/Windows
+* text=auto eol=lf
+
+# Binary files — don't touch
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg text
+*.woff binary
+*.woff2 binary
+*.otf binary
+*.ttf binary
