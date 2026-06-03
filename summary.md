@@ -1,41 +1,41 @@
 # Neura — Project Status
 
-**Last regenerated:** 2026-06-03
+**Last updated:** 2026-06-03 (Phase 6 complete)
 **Repo:** https://github.com/ghassan-gaidi/neura
 **Local path:** /mnt/c/Users/gg257/Desktop/neura/neura
 
 ## Git State
 
 - **Remote:** origin → https://github.com/ghassan-gaidi/neura (fetch + push, working)
-- **HEAD:** 1a60d2b — `chore: add .gitattributes to enforce LF line endings`
+- **HEAD:** a6a8542 — `Phase 6: Self-serve signup with magic link auth`
 - **Branch:** main
-- **Working tree:** clean (only untracked `summary.md` from this regen)
+- **Working tree:** clean
 - **Recent commits:**
+  - a6a8542 Phase 6: Self-serve signup with magic link auth
   - 1a60d2b chore: add .gitattributes to enforce LF line endings
   - bbd6094 feat: brutalist UI, SEO/GEO optimization, JSON-LD schemas
   - 3df77c4 feat: launch prep — landing page and publication guide
   - ed09185 feat: production hardening — CORS, logging, configurable rate limiting
-  - 8f3cbeb feat: agent framework integrations
-- **Push status:** ✓ verified via `git ls-remote origin HEAD` — connectivity confirmed
 
 ## Deployment Health
 
-- **Homepage** https://neura-blond.vercel.app/ — HTTP 200 (~0.58s) ✓
-- **API /api/credits** (unauthenticated) — HTTP 401 ✓ (auth gate working as expected)
+- **Homepage** https://neura-blond.vercel.app/ — HTTP 200 ✓
+- **API /api/credits** (unauthenticated) — HTTP 401 ✓ (auth gate working)
 - **Vercel cron:** `*/5 * * * *` → `GET /api/payments/poll` (active)
 - **Project ID:** prj_t8HAisjHsSNKs4Xc5zGv02TuDsNp
+- **⚠️ Supabase project PAUSED** — needs unpause before migration 006 can deploy
 
 ## Stack
 
 - **Next.js** 16.2.6 + React 19.2.4 (App Router)
 - **Supabase** project ref `hykistvnlfhiywuifcak` (pgvector for embeddings)
 - **OpenAI** text-embedding-3-small (1536 dims)
-- **Vercel KV** for rate limiting (creds missing locally)
+- **Vercel KV** for rate limiting
 - **TypeScript** 5 + Tailwind 4
 
 ## Database Schema (Supabase)
 
-5 migrations, 9 tables, 3 RPCs:
+6 migrations, 10 tables (9 existing + 1 new), 3 RPCs:
 
 | # | File | Purpose |
 |---|------|---------|
@@ -44,8 +44,9 @@
 | 003 | `003_credits_payments.sql` | Credits + payment transactions |
 | 004 | `004_deduct_credits.sql` | RPC: deduct_credits |
 | 005 | `005_redeem_payment.sql` | RPC: redeem_payment |
+| 006 | `006_self_serve_signup.sql` | **NEW:** Users table + auth triggers (BLOCKED — project paused) |
 
-## API Routes (16 endpoints)
+## API Routes (19 endpoints)
 
 **Memory (5):** POST/GET/PATCH/DELETE `/api/memory`, `/api/memory/:id`, `/api/memory/search`, `/api/memory/summarize`
 **State (3):** POST/GET/DELETE `/api/state`, `/api/state/:key`
@@ -54,6 +55,21 @@
 **Payments (2):** `/api/payments/verify`, `/api/payments/poll` (cron)
 **Credits (1):** `/api/credits`
 **Admin (3):** `/api/admin/keys`, `/api/admin/transactions`, `/api/admin/usage`
+**Auth (2):** `/api/auth/me`, `/api/auth/create-key` ← NEW
+
+## Auth & Signup (Phase 6)
+
+- **Signup flow:** `/signup` → email magic link → `/auth/callback` → auto API key + 1000 credits
+- **Dashboard:** Auto-detects Supabase session, stores API key in localStorage
+- **Free tier:** 100 memories max, 1000 credits, all endpoints
+- **Pro tier:** Unlimited memories + credits ($1 USDC / 1000 credits)
+
+### BLOCKED — Supabase Auth Setup Required
+
+After unpausing the project, must:
+1. Run migration 006 via SQL Editor
+2. Enable Email auth: Dashboard > Authentication > Providers > Email
+3. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to Vercel env
 
 ## Credits Pricing
 
@@ -68,24 +84,30 @@
 
 **Top-up:** 1000 credits for $1 USDC on Base → wallet `0x29021dd5306D7b3b6608a2bc8276D33c1200C7Ef`
 
-## SDKs (v0.1.0, NOT published)
+## SDKs (Published)
 
-- `sdk/typescript/` — name: `neura-api`, MIT, ready for `npm publish`
-- `sdk/python/` — name: `neura-api`, MIT, ready for `twine upload`
+- **npm:** `neura-api@0.2.0` — https://www.npmjs.com/package/neura-api
+- **PyPI:** `neura-api-python@0.1.0` — https://pypi.org/project/neura-api-python/
+- **Install:** `npm install neura-api` / `pip install neura-api-python`
 
 ## Gaps / Missing
 
-- ❌ No `.env.local` locally — Supabase + OpenAI + Vercel KV creds live in Vercel project env, not on disk
-- ❌ SDKs not published to npm/PyPI
-- ❌ Vercel KV credentials absent from `.env.example` (must be set in Vercel dashboard)
+- ❌ **Supabase project PAUSED** — migration 006 can't deploy until unpaused
+- ❌ No `.env.local` locally — Supabase + OpenAI creds live in Vercel dashboard
+- ❌ Supabase Auth not configured (email provider disabled)
+- ❌ NEXT_PUBLIC env vars missing from Vercel (needed for browser auth client)
 - ⚠️ Memory at 84% capacity — consider pruning old entries
 
-## Next Milestones
+## Phases Progress
 
-- **Phase 5:** Publish SDKs to npm + PyPI
-- **Phase 6:** API key self-serve signup flow (currently manual via Supabase)
-- **Phase 7:** Usage analytics dashboard
-- **Phase 8:** Webhook retry logic + dead-letter queue
+| Phase | Status | Description |
+|-------|--------|-------------|
+| 1-4 | ✅ Done | Core API, credits, payments, deployment |
+| 5 | ✅ Done | SDK publish (npm + PyPI) |
+| 6 | ✅ Code done | Self-serve signup (BLOCKED on Supabase unpause) |
+| 7 | 🔜 Next | API key dashboard (key mgmt, usage stats) |
+| 8 | ⏳ Pending | Product gaps (webhook retry, rate limit headers) |
+| 9 | ⏳ Pending | Growth (landing polish, launch post) |
 
 ## Tokens (local secrets file)
 
