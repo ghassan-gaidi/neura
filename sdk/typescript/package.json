@@ -1,8 +1,16 @@
 {
   "name": "neura-api",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "External brain for AI agents — persistent memory and state via HTTP",
-  "keywords": ["ai", "agent", "memory", "llm", "state", "vector", "rag"],
+  "keywords": [
+    "ai",
+    "agent",
+    "memory",
+    "llm",
+    "state",
+    "vector",
+    "rag"
+  ],
   "homepage": "https://neura.sh",
   "repository": {
     "type": "git",
@@ -21,7 +29,9 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts --clean --external ethers",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch --external ethers",

@@ -21,11 +21,22 @@ export interface CreditResult {
   allowed: boolean
   balance: number
   cost: number
+  reason?: string
 }
 
 export interface PricingTier {
   [endpoint: string]: number
 }
+
+/** Free tier limits */
+export const FREE_TIER = {
+  /** Max memories per tenant */
+  maxMemories: 100,
+  /** Free credits on signup */
+  signupCredits: 1000,
+  /** Rate limit: requests per 60s */
+  rateLimit: 100,
+} as const
 
 const PRICING: PricingTier = {
   'POST /api/memory': 1,
@@ -89,16 +100,46 @@ export async function checkCredits(tenantId: string, method: string, pathname: s
     // No balance row — create one with free credits
     await supabase.from('credit_balances').insert({
       tenant_id: tenantId,
-      balance: 1000,
-      total_purchased: 1000,
+      balance: FREE_TIER.signupCredits,
+      total_purchased: FREE_TIER.signupCredits,
     }).then()
-    return { allowed: true, balance: 1000, cost }
+    return { allowed: true, balance: FREE_TIER.signupCredits, cost }
   }
 
   return {
     allowed: data.balance >= cost,
     balance: data.balance,
     cost,
+  }
+}
+
+/**
+ * Check if a tenant is within free tier memory limits.
+ * Returns { allowed, current, limit } for memory creation.
+ */
+export async function checkMemoryLimit(tenantId: string): Promise<{ allowed: boolean; current: number; limit: number }> {
+  // Get user plan
+  const { data: user } = await supabase
+    .from('users')
+    .select('plan')
+    .eq('tenant_id', tenantId)
+    .single()
+
+  const plan = user?.plan || 'free'
+  const limit = plan === 'free' ? FREE_TIER.maxMemories : Infinity
+
+  // Count current memories
+  const { count } = await supabase
+    .from('memories')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+
+  const current = count || 0
+
+  return {
+    allowed: current < limit,
+    current,
+    limit: limit === Infinity ? -1 : limit,
   }
 }
 

@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 
 type Memory = { id: string; content: string; tags: string[]; importance: number; created_at: string }
 type Transaction = { id: string; amount: number; transaction_type: string; description: string; created_at: string }
@@ -10,12 +12,15 @@ type StateEntry = { key: string; value: any; created_at: string; updated_at: str
 type Tab = 'usage' | 'billing' | 'memories' | 'keys' | 'state'
 
 export default function DashboardPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [apiKey, setApiKey] = useState('')
   const [authenticated, setAuthenticated] = useState(false)
   const [authLoading, setAuthLoading] = useState(false)
   const [dataLoading, setDataLoading] = useState(false)
   const [tab, setTab] = useState<Tab>('usage')
   const [error, setError] = useState('')
+  const [userEmail, setUserEmail] = useState('')
 
   // Data
   const [memories, setMemories] = useState<Memory[]>([])
@@ -30,6 +35,47 @@ export default function DashboardPage() {
   const [newKeyResult, setNewKeyResult] = useState('')
   const [topUpAmount, setTopUpAmount] = useState('1000')
   const [topUpResult, setTopUpResult] = useState('')
+
+  // Auto-detect Supabase Auth session on mount
+  useEffect(() => {
+    const initAuth = async () => {
+      // Check for key in URL params first (from auth callback)
+      const urlKey = searchParams.get('key')
+      if (urlKey) {
+        setApiKey(urlKey)
+        localStorage.setItem('neura_api_key', urlKey)
+        return
+      }
+
+      // Check localStorage
+      const storedKey = localStorage.getItem('neura_api_key')
+      if (storedKey) {
+        setApiKey(storedKey)
+        return
+      }
+
+      // Check Supabase Auth session
+      const { data: { session } } = await supabaseBrowser.auth.getSession()
+      if (session) {
+        setUserEmail(session.user.email || '')
+        // Fetch API key from our backend
+        try {
+          const res = await fetch('/api/auth/me', {
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          })
+          if (res.ok) {
+            const result = await res.json()
+            if (result.data?.api_key) {
+              // We need the raw key — but /api/auth/me only returns metadata
+              // Show a prompt to get the key from the user
+              setError('Signed in as ' + session.user.email + '. Enter your API key to continue.')
+            }
+          }
+        } catch {}
+      }
+    }
+    initAuth()
+  }, [searchParams])
 
   const apiFetch = useCallback(async (path: string, options?: RequestInit) => {
     const res = await fetch(path, {
@@ -53,11 +99,20 @@ export default function DashboardPage() {
     try {
       await apiFetch('/api/state')
       setAuthenticated(true)
+      localStorage.setItem('neura_api_key', apiKey)
     } catch (err: any) {
       setError(err.message || 'Invalid API key')
     } finally {
       setAuthLoading(false)
     }
+  }
+
+  const logout = async () => {
+    await supabaseBrowser.auth.signOut()
+    localStorage.removeItem('neura_api_key')
+    setApiKey('')
+    setAuthenticated(false)
+    setUserEmail('')
   }
 
   const loadData = useCallback(async () => {
@@ -81,6 +136,13 @@ export default function DashboardPage() {
       setDataLoading(false)
     }
   }, [apiFetch])
+
+  // Auto-login when apiKey is set
+  useEffect(() => {
+    if (apiKey && !authenticated) {
+      login()
+    }
+  }, [apiKey])
 
   useEffect(() => { if (authenticated) loadData() }, [authenticated, loadData])
 
@@ -106,11 +168,19 @@ export default function DashboardPage() {
   const handleCreateKey = async () => {
     setNewKeyResult('')
     try {
-      const res = await apiFetch('/api/admin/keys', {
+      // Try Supabase Auth first, fallback to Neura API key auth
+      const { data: { session } } = await supabaseBrowser.auth.getSession()
+      const res = await fetch('/api/auth/create-key', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token || apiKey}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ label: newKeyLabel || 'dashboard-key' }),
       })
-      setNewKeyResult(res.data.raw_key)
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error?.message || 'Failed')
+      setNewKeyResult(result.data.raw_key)
       setNewKeyLabel('')
     } catch (err: any) { setNewKeyResult('Error: ' + err.message) }
   }
@@ -134,7 +204,22 @@ export default function DashboardPage() {
       <div className="relative z-10 flex items-center justify-center min-h-[calc(100vh-3rem)]">
         <div className="w-full max-w-sm px-6">
           <h1 className="text-4xl font-bold mb-2" style={{ fontFamily: 'var(--font-syne)' }}>Neura</h1>
-          <p className="text-white/40 text-sm mb-6">Enter an API key to access the dashboard.</p>
+          <p className="text-white/40 text-sm mb-6">
+            {userEmail
+              ? `Signed in as ${userEmail}. Enter your API key.`
+              : 'Enter an API key to access the dashboard.'}
+          </p>
+
+          {!userEmail && (
+            <a
+              href="/signup"
+              className="block w-full text-center bg-white/5 border-2 border-white/20 text-white px-4 py-3 text-sm font-bold mb-4 hover:bg-white/10 transition-colors"
+              style={{ fontFamily: 'var(--font-syne)' }}
+            >
+              Sign up for free →
+            </a>
+          )}
+
           <input
             type="password"
             value={apiKey}
@@ -152,6 +237,15 @@ export default function DashboardPage() {
           >
             {authLoading ? 'Checking...' : 'Access Dashboard'}
           </button>
+
+          {userEmail && (
+            <button
+              onClick={logout}
+              className="w-full mt-3 text-white/30 text-xs hover:text-white transition-colors"
+            >
+              Sign out
+            </button>
+          )}
         </div>
       </div>
     )
@@ -174,20 +268,28 @@ export default function DashboardPage() {
             <h1 className="text-xl font-bold" style={{ fontFamily: 'var(--font-syne)' }}>Dashboard</h1>
             <p className="text-xs text-white/30">{balance.toLocaleString()} credits remaining</p>
           </div>
-          <div className="flex">
-            {tabs.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`px-4 py-2 text-xs font-bold border-2 ${
-                  tab === t.id
-                    ? 'bg-white text-black border-white'
-                    : 'bg-black text-white/30 border-white/10 hover:text-white hover:border-white/30'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-4">
+            <div className="flex">
+              {tabs.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`px-4 py-2 text-xs font-bold border-2 ${
+                    tab === t.id
+                      ? 'bg-white text-black border-white'
+                      : 'bg-black text-white/30 border-white/10 hover:text-white hover:border-white/30'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={logout}
+              className="text-white/20 hover:text-white text-xs border border-white/10 px-3 py-2"
+            >
+              Logout
+            </button>
           </div>
         </div>
 

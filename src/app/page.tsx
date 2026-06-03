@@ -28,18 +28,18 @@ export default function Home() {
           </p>
           <div className="flex gap-3">
             <Link
-              href="/docs"
+              href="/signup"
               className="bg-white text-black px-6 py-3 text-sm font-bold hover:bg-white/80 transition-colors border-2 border-white"
               style={{ fontFamily: 'var(--font-syne)' }}
             >
-              API Docs →
+              Get API Key →
             </Link>
             <Link
-              href="/dashboard"
+              href="/docs"
               className="bg-black text-white px-6 py-3 text-sm font-bold hover:bg-white/10 transition-colors border-2 border-white/20"
               style={{ fontFamily: 'var(--font-syne)' }}
             >
-              Dashboard
+              API Docs
             </Link>
             <a
               href="https://github.com/ghassan-gaidi/neura"
@@ -118,7 +118,7 @@ export default function Home() {
           </div>
           <div className="mt-3 flex gap-4 text-xs text-white/30">
             <span>TypeScript SDK: <code className="text-white/60">npm install neura-api</code></span>
-            <span>Python SDK: <code className="text-white/60">pip install neura-api</code></span>
+            <span>Python SDK: <code className="text-white/60">pip install neura-api-python</code></span>
           </div>
         </section>
 
@@ -130,25 +130,48 @@ export default function Home() {
           >
             Pricing
           </h2>
-          <div className="border-2 border-white/10 bg-white/[0.02] p-8">
-            <div className="flex items-baseline gap-3 mb-4">
-              <span
-                className="text-5xl font-bold"
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-white/10">
+            {/* Free Tier */}
+            <div className="bg-black p-8 border border-white/5">
+              <p className="text-xs text-white/40 mb-2 uppercase tracking-wider">Free</p>
+              <div className="flex items-baseline gap-2 mb-4">
+                <span className="text-4xl font-bold" style={{ fontFamily: 'var(--font-syne)' }}>$0</span>
+              </div>
+              <ul className="space-y-2 text-sm text-white/40 mb-6">
+                <li>1,000 credits on signup</li>
+                <li>100 memories max</li>
+                <li>All API endpoints</li>
+                <li>Semantic search</li>
+              </ul>
+              <Link
+                href="/signup"
+                className="block w-full text-center bg-white/5 border-2 border-white/20 text-white px-4 py-3 text-sm font-bold hover:bg-white/10 transition-colors"
                 style={{ fontFamily: 'var(--font-syne)' }}
               >
-                $1
-              </span>
-              <span className="text-white/40 text-sm">USDC / 1000 credits</span>
+                Sign up free →
+              </Link>
             </div>
-            <ul className="space-y-2 text-sm text-white/40">
-              <li>Store a memory: <span className="text-white/60">1 credit</span></li>
-              <li>Semantic search: <span className="text-white/60">1 credit</span></li>
-              <li>Advanced search: <span className="text-white/60">2 credits</span></li>
-              <li>List / Delete / State ops: <span className="text-white/60">free</span></li>
-              <li className="pt-2 border-t border-white/10 mt-2">
-                New agents get <span className="text-white font-bold">1000 free credits</span>
-              </li>
-            </ul>
+            {/* Paid Tier */}
+            <div className="bg-black p-8 border border-white/5">
+              <p className="text-xs text-white/40 mb-2 uppercase tracking-wider">Pro</p>
+              <div className="flex items-baseline gap-2 mb-4">
+                <span className="text-4xl font-bold" style={{ fontFamily: 'var(--font-syne)' }}>$1</span>
+                <span className="text-white/40 text-sm">USDC / 1000 credits</span>
+              </div>
+              <ul className="space-y-2 text-sm text-white/40 mb-6">
+                <li>Unlimited memories</li>
+                <li>Unlimited credits (pay as you go)</li>
+                <li>All API endpoints</li>
+                <li>Priority support</li>
+              </ul>
+              <Link
+                href="/signup"
+                className="block w-full text-center bg-white text-black px-4 py-3 text-sm font-bold hover:bg-white/80 transition-colors border-2 border-white"
+                style={{ fontFamily: 'var(--font-syne)' }}
+              >
+                Get started →
+              </Link>
+            </div>
           </div>
         </section>
 
