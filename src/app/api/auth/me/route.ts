@@ -1,11 +1,13 @@
 import { NextRequest } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { respond, respondError } from '@/lib/response'
+import crypto from 'crypto'
 
 /**
  * GET /api/auth/me
  * Returns the current user's profile and API key.
  * Requires Supabase Auth Bearer token (not Neura API key).
+ * On first access, automatically generates the user's initial API key.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -34,14 +36,39 @@ export async function GET(request: NextRequest) {
       return respondError('not_found', 'User profile not found', 404)
     }
 
-    // Get the user's API key (the default one)
-    const { data: apiKey, error: keyError } = await supabase
+    // Check if user already has an API key
+    const { data: existingKeys, error: keyError } = await supabase
       .from('api_keys')
       .select('id, label, is_active, created_at, last_used_at')
       .eq('tenant_id', profile.tenant_id)
       .order('created_at', { ascending: true })
       .limit(1)
-      .single()
+
+    // If no API key exists, generate one now (first-time access)
+    let apiKey = existingKeys?.[0] || null
+    let rawKey: string | undefined
+
+    if (!apiKey) {
+      // Generate a new API key
+      rawKey = `sk-${crypto.randomBytes(32).toString('hex')}`
+      const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex')
+
+      const { data: newKey, error: insertError } = await supabase
+        .from('api_keys')
+        .insert({
+          tenant_id: profile.tenant_id,
+          key_hash: keyHash,
+          label: 'default',
+        })
+        .select('id, label, is_active, created_at, last_used_at')
+        .single()
+
+      if (insertError) {
+        return respondError('internal_error', 'Failed to create API key: ' + insertError.message, 500)
+      }
+
+      apiKey = newKey
+    }
 
     // Get credit balance
     const { data: credits } = await supabase
@@ -57,7 +84,8 @@ export async function GET(request: NextRequest) {
         plan: profile.plan,
         created_at: profile.created_at,
       },
-      api_key: apiKey || null,
+      api_key: apiKey,
+      raw_key: rawKey, // only set on first access, undefined on subsequent calls
       credits: credits?.balance || 0,
     })
   } catch (err: any) {
