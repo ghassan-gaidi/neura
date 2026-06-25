@@ -94,7 +94,7 @@ export async function PATCH(
       updates.content = body.content
       // Regenerate embedding if content changed
       try {
-        const { generateEmbedding } = await import('@/lib/openai')
+        const { generateEmbedding } = await import('@/lib/embeddings')
         const embedding = await generateEmbedding(body.content)
         updates.embedding = `[${embedding.join(',')}]`
       } catch (err: any) {

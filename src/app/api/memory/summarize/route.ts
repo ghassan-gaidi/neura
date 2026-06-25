@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       if (error) return respondError('internal_error', 'Failed to fetch memories: ' + error.message, 500)
       memories = data || []
     } else if (body.query) {
-      const { generateEmbedding } = await import('@/lib/openai')
+      const { generateEmbedding } = await import('@/lib/embeddings')
       const embedding = await generateEmbedding(body.query)
 
       const { data, error } = await supabase.rpc('search_memories', {
