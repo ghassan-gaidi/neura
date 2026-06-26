@@ -66,7 +66,8 @@ export async function POST(req: NextRequest) {
 
     // Try connecting via Supabase pooler using JWT as password
     // Format: postgresql://postgres.<ref>@<region>.pooler.supabase.com:6543/postgres
-    const connectionString = `postgresql://postgres.${projectRef}:${encodeURIComponent(serviceRoleKey)}@aws-0-${region}.pooler.supabase.com:6543/postgres`
+    const hostname = `db.${projectRef}.supabase.co`
+    const connectionString = `postgresql://postgres.${projectRef}:${encodeURIComponent(serviceRoleKey)}@${hostname}:5432/postgres`
 
     // Dynamic import of pg
     const { default: { Pool } } = await import('pg')
