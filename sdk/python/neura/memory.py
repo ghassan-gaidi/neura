@@ -1,5 +1,4 @@
-"""Memory operations — store, search, update, delete."""
-
+"""Memory operations — store, search, batch, update, delete, share."""
 from typing import Any, Optional
 from .client import HttpClient
 
@@ -35,8 +34,9 @@ class MemoryAPI:
 
     def search(self, query: str, limit: int = 10) -> list[dict]:
         """Semantic search by query text."""
+        quoted = __import__("urllib.parse").parse.quote(query)
         result = self._client.request(
-            "GET", f"/api/memory?query={__import__('urllib.parse').parse.quote(query)}&limit={limit}"
+            "GET", f"/api/memory?query={quoted}&limit={limit}"
         )
         return result["data"]
 
@@ -48,14 +48,11 @@ class MemoryAPI:
         min_score: float = 0.0,
     ) -> list[dict]:
         """Advanced search with filters."""
-        body = {}
+        body = {"limit": limit, "min_score": min_score}
         if query:
             body["query"] = query
         if filters:
             body["filters"] = filters
-        body["limit"] = limit
-        body["min_score"] = min_score
-
         result = self._client.request("POST", "/api/memory/search", body)
         return result["data"]
 
@@ -72,3 +69,51 @@ class MemoryAPI:
     def delete(self, memory_id: str) -> None:
         """Delete a memory."""
         self._client.request("DELETE", f"/api/memory/{memory_id}")
+
+    def batch_create(self, memories: list[dict]) -> dict:
+        """Store multiple memories at once (max 25). Costs 1 credit each.
+
+        Args:
+            memories: List of dicts with keys: content, metadata?, tags?, importance?, expires_at?
+
+        Returns:
+            {"stored": int, "memories": [...]}
+        """
+        result = self._client.request("POST", "/api/memory/batch", {"memories": memories})
+        return result["data"]
+
+    def batch_delete(self, ids: list[str]) -> dict:
+        """Delete multiple memories by IDs (max 100). Free operation.
+
+        Returns:
+            {"deleted": int, "ids": [...]}
+        """
+        result = self._client.request("DELETE", "/api/memory/batch", {"ids": ids})
+        return result["data"]
+
+    def summarize(self, limit: int = 20, query: Optional[str] = None) -> dict:
+        """Summarize recent memories via LLM. Costs 5 credits.
+
+        Returns:
+            {"summary": str, "memory_count": int}
+        """
+        body = {"limit": limit}
+        if query:
+            body["query"] = query
+        result = self._client.request("POST", "/api/memory/summarize", body)
+        return result["data"]
+
+    def share(
+        self, memory_id: str, tenant_id: str, permission: str = "read"
+    ) -> None:
+        """Share a memory with another tenant."""
+        self._client.request(
+            "POST",
+            f"/api/memory/{memory_id}/share",
+            {"tenant_id": tenant_id, "permission": permission},
+        )
+
+    def shared_with_me(self) -> list[dict]:
+        """List memories shared with this tenant by other agents."""
+        result = self._client.request("GET", "/api/shared-with-me")
+        return result["data"]

@@ -20,7 +20,7 @@ Usage:
     goal = neura.state.get("current_goal")
 """
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 
 from .neura import Neura
 from .client import NeuraHttpError

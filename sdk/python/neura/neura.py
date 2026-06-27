@@ -1,11 +1,14 @@
 """Neura — External Brain for AI Agents.
 
-Gives AI agents persistent memory and state via a simple HTTP API.
+Gives AI agents persistent memory, state, webhooks, and admin capabilities
+via a simple HTTP API.
 """
 
 from .client import HttpClient, NeuraHttpError
 from .memory import MemoryAPI
 from .state import StateAPI
+from .webhook import WebhookAPI
+from .admin import AdminAPI, CreditsAPI
 
 
 class Neura:
@@ -31,6 +34,9 @@ class Neura:
         self._client = HttpClient(base_url, api_key, max_retries, auto_pay)
         self.memory = MemoryAPI(self._client)
         self.state = StateAPI(self._client)
+        self.webhooks = WebhookAPI(self._client)
+        self.admin = AdminAPI(self._client)
+        self.credits = CreditsAPI(self._client)
 
 
 __all__ = ["Neura", "NeuraHttpError"]
