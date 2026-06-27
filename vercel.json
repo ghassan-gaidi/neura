@@ -6,7 +6,11 @@
     },
     {
       "path": "/api/webhooks/retry-cron",
-      "schedule": "0 0 * * *"
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/memory/cleanup",
+      "schedule": "0 12 * * *"
     }
   ]
 }
