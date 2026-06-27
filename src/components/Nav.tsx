@@ -18,6 +18,9 @@ export default function Nav() {
           <Link href="/docs" className="hover:text-white transition-colors">
             API Docs
           </Link>
+          <Link href="/#pricing" className="hover:text-white transition-colors">
+            Pricing
+          </Link>
           <Link href="/dashboard" className="hover:text-white transition-colors">
             Dashboard
           </Link>
@@ -29,6 +32,13 @@ export default function Nav() {
           >
             GitHub
           </a>
+          <Link
+            href="/signup"
+            className="bg-white text-black px-3 py-1.5 text-xs font-bold hover:bg-white/80 transition-colors"
+            style={{ fontFamily: 'var(--font-syne)' }}
+          >
+            Sign Up
+          </Link>
         </div>
       </div>
     </nav>
