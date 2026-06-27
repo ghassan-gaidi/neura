@@ -197,7 +197,7 @@ export default function DashboardContent() {
       <div className="relative z-10 flex items-center justify-center min-h-[calc(100vh-3rem)]">
         <div className="w-full max-w-sm px-6">
           <h1 className="text-4xl font-bold mb-2" style={{ fontFamily: 'var(--font-syne)' }}>Neura</h1>
-          <p className="text-white/40 text-sm mb-6">
+          <p className="text-white/60 text-sm mb-6">
             {userEmail
               ? `Signed in as ${userEmail}. Enter your API key.`
               : 'Enter an API key to access the dashboard.'}
@@ -259,7 +259,7 @@ export default function DashboardContent() {
         <div className="flex items-center justify-between mb-8 border-b-2 border-white/10 pb-4">
           <div>
             <h1 className="text-xl font-bold" style={{ fontFamily: 'var(--font-syne)' }}>Dashboard</h1>
-            <p className="text-xs text-white/30">{balance.toLocaleString()} credits remaining</p>
+            <p className="text-xs text-white/50">{balance.toLocaleString()} credits remaining</p>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex">

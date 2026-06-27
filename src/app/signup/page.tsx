@@ -39,13 +39,13 @@ export default function SignupPage() {
           >
             Check your email
           </h1>
-          <p className="text-white/40 text-lg mb-8">
-            We sent a magic link to <span className="text-white">{email}</span>.
+          <p className="text-white/70 text-lg mb-8">
+            We sent a magic link to <span className="text-white font-bold">{email}</span>.
             Click the link to sign in and get your API key.
           </p>
           <button
             onClick={() => { setSent(false); setEmail('') }}
-            className="text-white/40 hover:text-white text-sm underline underline-offset-4 transition-colors"
+            className="text-white/50 hover:text-white text-sm underline underline-offset-4 transition-colors"
           >
             Try a different email
           </button>
@@ -63,10 +63,10 @@ export default function SignupPage() {
         >
           Get your API key
         </h1>
-        <p className="text-white/40 text-lg mb-10">
+        <p className="text-white/60 text-lg mb-10">
           Sign up with your email. No password needed — we&apos;ll send you a magic link.
           <br />
-          <span className="text-white/60">1,000 free credits included.</span>
+          <span className="text-white font-semibold">1,000 free credits included.</span>
         </p>
 
         <form onSubmit={handleSignup} className="space-y-4">
@@ -76,7 +76,7 @@ export default function SignupPage() {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="agent@example.com"
             required
-            className="w-full bg-white/5 border border-white/10 rounded-none px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-white/40 transition-colors text-lg"
+            className="w-full bg-white/10 border border-white/30 px-4 py-3 text-white placeholder:text-white/40 focus:outline-none focus:border-white focus:bg-white/15 transition-colors text-lg"
             style={{ fontFamily: 'var(--font-dm-mono)' }}
           />
           <button
@@ -93,7 +93,7 @@ export default function SignupPage() {
           <p className="mt-4 text-red-400 text-sm">{error}</p>
         )}
 
-        <p className="mt-8 text-white/20 text-xs">
+        <p className="mt-8 text-white/30 text-xs">
           By signing up you agree to our Terms. Your API key grants access to the Neura API.
         </p>
       </div>
