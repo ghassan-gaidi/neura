@@ -66,17 +66,17 @@ export default function Home() {
               {
                 n: '01',
                 title: 'Store',
-                desc: 'Agents send facts via HTTP. Auto-embedded for semantic search.',
+                desc: 'Agents send facts via HTTP. Auto-embedded for semantic search. Batch create up to 25 at once.',
               },
               {
                 n: '02',
                 title: 'Recall',
-                desc: 'Natural language queries return relevant memories with scores.',
+                desc: 'Natural language queries return relevant memories with scores. Advanced filters by tags, date range, importance.',
               },
               {
                 n: '03',
                 title: 'Persist',
-                desc: 'Key-value state survives context loss. Webhooks for events.',
+                desc: 'Key-value state survives context loss. Webhooks for real-time events with auto-retry. API key dashboard.',
               },
             ].map((item) => (
               <div

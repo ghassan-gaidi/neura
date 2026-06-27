@@ -9,7 +9,7 @@ info:
     without human help.
 
     Base URL: `https://neura.sh`
-  version: "0.1.0"
+  version: "0.2.0"
   contact:
     name: Neura
     url: https://neura.sh
@@ -19,6 +19,7 @@ servers:
   - url: http://localhost:3000
     description: Local dev
 paths:
+  # ─── Memory ───────────────────────────────────────────────
   /api/memory:
     post:
       summary: Store a memory
@@ -43,7 +44,6 @@ paths:
               importance: 8
               metadata:
                 source: conversation
-                category: preference
       responses:
         "201":
           description: Memory created
@@ -58,10 +58,10 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "429":
-          $ref: "#/components/responses/RateLimited"
         "402":
           $ref: "#/components/responses/PaymentRequired"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
     get:
       summary: Search or list memories
@@ -115,6 +115,96 @@ paths:
                         type: string
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/memory/batch:
+    post:
+      summary: Store multiple memories
+      description: |
+        Batch create up to 25 memories at once. Costs 1 credit per memory.
+        Embeddings are generated in parallel.
+      operationId: batchCreateMemories
+      tags: [Memory]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchCreateInput"
+      responses:
+        "201":
+          description: Memories created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      stored:
+                        type: integer
+                      memories:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Memory"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+    delete:
+      summary: Delete multiple memories
+      description: |
+        Batch delete up to 100 memories by their IDs. Free operation.
+      operationId: batchDeleteMemories
+      tags: [Memory]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  maxItems: 100
+      responses:
+        "200":
+          description: Memories deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      deleted:
+                        type: integer
+                      ids:
+                        type: array
+                        items:
+                          type: string
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "429":
           $ref: "#/components/responses/RateLimited"
 
@@ -124,8 +214,6 @@ paths:
       description: |
         Search memories with fine-grained control: date ranges, tag filtering,
         metadata matching, and minimum relevance thresholds.
-
-        When an agent needs precision, use this instead of `GET /api/memory`.
       operationId: advancedSearch
       tags: [Memory]
       security:
@@ -159,6 +247,53 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/memory/summarize:
+    post:
+      summary: Summarize memories
+      description: |
+        Generates an LLM-based summary of recent memories.
+        Costs 5 credits.
+      operationId: summarizeMemories
+      tags: [Memory]
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit:
+                  type: integer
+                  default: 20
+                  description: Number of recent memories to summarize
+                query:
+                  type: string
+                  description: Optional query to filter memories before summarization
+      responses:
+        "200":
+          description: Summary generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      summary:
+                        type: string
+                      memory_count:
+                        type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         "429":
           $ref: "#/components/responses/RateLimited"
 
@@ -168,9 +303,6 @@ paths:
       description: |
         Update content, metadata, tags, or importance.
         If content changes, the embedding is automatically regenerated.
-
-        Agent tip: use this to correct facts or increase importance
-        on critical information.
       operationId: updateMemory
       tags: [Memory]
       security:
@@ -202,6 +334,8 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
         "404":
           $ref: "#/components/responses/NotFound"
         "429":
@@ -243,15 +377,69 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
+  /api/memory/{id}/share:
+    post:
+      summary: Share a memory
+      description: Share a memory with another tenant (agent).
+      operationId: shareMemory
+      tags: [Sharing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id]
+              properties:
+                tenant_id:
+                  type: string
+                  format: uuid
+                permission:
+                  type: string
+                  enum: [read, write]
+                  default: read
+      responses:
+        "200":
+          description: Memory shared
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/shared-with-me:
+    get:
+      summary: List shared memories
+      description: Returns memories that other agents have shared with you.
+      operationId: listSharedMemories
+      tags: [Sharing]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Shared memories
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  # ─── State ────────────────────────────────────────────────
   /api/state:
     post:
       summary: Set state
       description: |
         Store or update a key-value state entry.
         State is persistent between agent sessions.
-
-        Use this for: current goals, user settings, progress flags,
-        configuration values that should survive context loss.
       operationId: setState
       tags: [State]
       security:
@@ -373,6 +561,408 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
+  # ─── Webhooks ─────────────────────────────────────────────
+  /api/webhooks:
+    post:
+      summary: Register a webhook
+      description: Subscribe an HTTP endpoint to Neura events.
+      operationId: createWebhook
+      tags: [Webhooks]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWebhookInput"
+      responses:
+        "201":
+          description: Webhook registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Webhook"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+    get:
+      summary: List webhooks
+      operationId: listWebhooks
+      tags: [Webhooks]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Registered webhooks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Webhook"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/webhooks/{id}:
+    get:
+      summary: Get webhook details
+      operationId: getWebhook
+      tags: [Webhooks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Webhook details
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+    patch:
+      summary: Update a webhook
+      operationId: updateWebhook
+      tags: [Webhooks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Webhook updated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+    delete:
+      summary: Delete a webhook
+      operationId: deleteWebhook
+      tags: [Webhooks]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Webhook deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/webhooks/retry:
+    post:
+      summary: Retry failed webhooks
+      description: Trigger retry of all failed webhook deliveries that are due.
+      operationId: retryWebhooks
+      tags: [Webhooks]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Retry results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      processed:
+                        type: integer
+                      succeeded:
+                        type: integer
+                      failed:
+                        type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  # ─── Credits & Payments ──────────────────────────────────
+  /api/credits:
+    get:
+      summary: Get credit balance
+      description: Returns remaining credits and pricing info.
+      operationId: getCredits
+      tags: [Payments]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Credit balance
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CreditsBalance"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/payments/verify:
+    post:
+      summary: Verify on-chain payment
+      description: |
+        Verify a USDC transfer on Base and credit the agent's account.
+        Accepts a transaction hash and verifies it on-chain.
+      operationId: verifyPayment
+      tags: [Payments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transaction_hash]
+              properties:
+                transaction_hash:
+                  type: string
+                  description: Base USDC transfer transaction hash
+      responses:
+        "200":
+          description: Payment verified and credited
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  # ─── Auth ─────────────────────────────────────────────────
+  /api/auth/me:
+    get:
+      summary: Get current user profile
+      description: |
+        Returns the authenticated user's profile and API key metadata.
+        On first access, automatically provisions API key + 1,000 free credits.
+        Requires Supabase Auth session token (Bearer), not an API key.
+      operationId: getAuthProfile
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          email:
+                            type: string
+                          plan:
+                            type: string
+                          created_at:
+                            type: string
+                      api_key:
+                        $ref: "#/components/schemas/ApiKeyMeta"
+                      raw_key:
+                        type: string
+                        description: Full API key (only on first access)
+                      credits:
+                        type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ─── Admin ────────────────────────────────────────────────
+  /api/admin/keys:
+    get:
+      summary: List API keys
+      description: List all API keys for the current tenant.
+      operationId: listApiKeys
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: API keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ApiKeyMeta"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+    post:
+      summary: Create API key
+      description: Generate a new API key for this tenant.
+      operationId: createApiKey
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                  description: Human-readable label for the key
+      responses:
+        "201":
+          description: API key created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      label:
+                        type: string
+                      is_active:
+                        type: boolean
+                      created_at:
+                        type: string
+                      raw_key:
+                        type: string
+                        description: Full key (only shown once)
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/admin/keys/{id}:
+    delete:
+      summary: Revoke API key
+      description: Deactivate an API key by ID. Cannot be undone.
+      operationId: revokeApiKey
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Key revoked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Key already revoked
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/admin/transactions:
+    get:
+      summary: List credit transactions
+      description: Audit log of all credit movements for this tenant.
+      operationId: listTransactions
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        "200":
+          description: Transaction list
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/admin/usage:
+    get:
+      summary: Get usage stats
+      description: Request counts, credits consumed/purchased over a period.
+      operationId: getUsage
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 7
+            maximum: 90
+      responses:
+        "200":
+          description: Usage statistics
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -381,7 +971,7 @@ components:
       bearerFormat: sk-xxx
       description: |
         API key in the format `sk-...`.
-        Generate keys via the Neura dashboard or bootstrap endpoint.
+        Generate keys via the Neura dashboard or /api/auth/me.
 
   schemas:
     Memory:
@@ -443,6 +1033,17 @@ components:
           type: string
           format: date-time
           nullable: true
+
+    BatchCreateInput:
+      type: object
+      required: [memories]
+      properties:
+        memories:
+          type: array
+          minItems: 1
+          maxItems: 25
+          items:
+            $ref: "#/components/schemas/CreateMemoryInput"
 
     UpdateMemoryInput:
       type: object
@@ -520,6 +1121,106 @@ components:
           type: string
           format: date-time
 
+    Webhook:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            type: string
+        is_active:
+          type: boolean
+        secret:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateWebhookInput:
+      type: object
+      required: [url, events]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: HTTPS endpoint to receive webhook payloads
+        events:
+          type: array
+          items:
+            type: string
+            enum:
+              - memory.created
+              - memory.updated
+              - memory.deleted
+              - memory.expiring
+              - state.changed
+              - memory.shared
+              - credits.low
+          description: Event types to subscribe to
+        secret:
+          type: string
+          description: Optional HMAC secret for signature verification
+
+    CreditsBalance:
+      type: object
+      properties:
+        balance:
+          type: integer
+        pricing:
+          type: object
+          properties:
+            POST /api/memory:
+              type: integer
+            GET /api/memory:
+              type: integer
+          description: Credit cost per operation
+        top_up:
+          type: object
+          properties:
+            via:
+              type: object
+              properties:
+                chain:
+                  type: string
+                token:
+                  type: string
+                recipient:
+                  type: string
+                pricePerThousand:
+                  type: string
+                minTopUp:
+                  type: integer
+            url:
+              type: string
+
+    ApiKeyMeta:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+
     ApiError:
       type: object
       properties:
@@ -535,7 +1236,7 @@ components:
               description: Human-readable description
             action:
               type: string
-              description: Suggested action for the agent
+              description: Suggested agent action
               example: wait_and_retry
             retry_after:
               type: integer
@@ -575,17 +1276,19 @@ components:
               action: provide_valid_api_key
               docs_url: https://neura.sh/docs/authentication
 
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+
     NotFound:
       description: Resource not found
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ApiError"
-          example:
-            error:
-              code: not_found
-              message: Memory not found
-              action: check_resource_id
 
     RateLimited:
       description: Rate limit exceeded
@@ -607,12 +1310,6 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ApiError"
-          example:
-            error:
-              code: rate_limited
-              message: Rate limit exceeded. Please wait and retry.
-              action: wait_and_retry
-              retry_after: 5
 
     PaymentRequired:
       description: Insufficient credits (x402 payment required)
