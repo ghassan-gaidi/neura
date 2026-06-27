@@ -10,15 +10,7 @@ export interface NeuraOptions {
   baseUrl?: string
   /** Max retries on failure (default: 3) */
   maxRetries?: number
-  /**
-   * Autonomous payment handling.
-   * When the API returns 402 (insufficient credits), the SDK can
-   * automatically pay in USDC on Base and retry the request.
-   * 
-   * Two modes:
-   *   1. Callback — you handle sending USDC, SDK handles the rest
-   *   2. Private key — SDK sends USDC automatically (requires ethers)
-   */
+  /** Autonomous payment handling (x402). */
   autoPay?: AutoPayOptions
 }
 
@@ -34,21 +26,12 @@ export interface X402Details {
 
 /** Configuration for autonomous payment handling */
 export interface AutoPayOptions {
-  /**
-   * Callback invoked when a 402 is received.
-   * Send USDC using your own wallet logic and return the tx hash.
-   * The SDK then verifies the payment and retries the original request.
-   */
   onPaymentRequired?: (x402: X402Details) => Promise<string>
-  /**
-   * Agent wallet private key (0x...).
-   * The SDK will automatically send USDC on Base.
-   * Requires ethers v6 to be installed.
-   */
   privateKey?: string
-  /** Base RPC URL (default: https://mainnet.base.org) */
   rpcUrl?: string
 }
+
+// ─── Memory ────────────────────────────────────────────────
 
 /** A stored memory entry */
 export interface Memory {
@@ -98,6 +81,26 @@ export interface SearchMemoryInput {
   min_score?: number
 }
 
+/** Batch create result */
+export interface BatchCreateResult {
+  stored: number
+  memories: Memory[]
+}
+
+/** Batch delete result */
+export interface BatchDeleteResult {
+  deleted: number
+  ids: string[]
+}
+
+/** Summarize result */
+export interface SummarizeResult {
+  summary: string
+  memory_count: number
+}
+
+// ─── State ─────────────────────────────────────────────────
+
 /** A state entry */
 export interface StateEntry {
   key: string
@@ -105,6 +108,89 @@ export interface StateEntry {
   created_at: string
   updated_at: string
 }
+
+// ─── Webhooks ──────────────────────────────────────────────
+
+export type WebhookEvent =
+  | 'memory.created'
+  | 'memory.updated'
+  | 'memory.deleted'
+  | 'memory.expiring'
+  | 'state.changed'
+  | 'memory.shared'
+  | 'credits.low'
+
+/** A registered webhook */
+export interface Webhook {
+  id: string
+  url: string
+  events: WebhookEvent[]
+  is_active: boolean
+  secret?: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** Input for creating a webhook */
+export interface CreateWebhookInput {
+  url: string
+  events: WebhookEvent[]
+  secret?: string
+}
+
+// ─── Admin ─────────────────────────────────────────────────
+
+/** An API key metadata */
+export interface ApiKeyMeta {
+  id: string
+  label: string
+  is_active: boolean
+  created_at: string
+  last_used_at: string | null
+}
+
+/** API key creation result (includes raw key once) */
+export interface ApiKeyCreateResult extends ApiKeyMeta {
+  raw_key: string
+}
+
+/** A credit transaction */
+export interface Transaction {
+  id: string
+  amount: number
+  transaction_type: string
+  description?: string
+  created_at: string
+}
+
+/** Usage statistics */
+export interface UsageStats {
+  total_requests: number
+  credits_used: number
+  credits_purchased: number
+  by_endpoint: Record<string, number>
+  by_day: Record<string, number>
+}
+
+// ─── Credits ───────────────────────────────────────────────
+
+/** Credit balance and pricing */
+export interface CreditsBalance {
+  balance: number
+  pricing: Record<string, number>
+  top_up: {
+    via: {
+      chain: string
+      token: string
+      recipient: string
+      pricePerThousand: string
+      minTopUp: number
+    }
+    url: string
+  }
+}
+
+// ─── Core API types ────────────────────────────────────────
 
 /** API error returned by the server */
 export interface NeuraApiError {

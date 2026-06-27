@@ -236,23 +236,12 @@ var MemoryAPI = class {
     this.client = client;
   }
   client;
-  /**
-   * Store a memory with auto-embedding.
-   * The content is automatically embedded via OpenAI.
-   */
+  /** Store a memory with auto-embedding. */
   async create(input, idempotencyKey) {
-    const { data } = await this.client.request("POST", "/api/memory", input, {
-      idempotencyKey
-    });
+    const { data } = await this.client.request("POST", "/api/memory", input, { idempotencyKey });
     return data;
   }
-  /**
-   * Search memories by semantic similarity.
-   * Returns memories ranked by relevance score.
-   * 
-   * @example
-   * const results = await neura.memory.search('What are my risk preferences?')
-   */
+  /** Search memories by semantic similarity. */
   async search(query, limit = 10) {
     const { data } = await this.client.request(
       "GET",
@@ -260,34 +249,48 @@ var MemoryAPI = class {
     );
     return data;
   }
-  /**
-   * Advanced search with filters.
-   * Supports date ranges, metadata matching, and tag filtering.
-   */
+  /** Advanced search with filters (tags, date range, metadata). */
   async searchAdvanced(input) {
     const { data } = await this.client.request("POST", "/api/memory/search", input);
     return data;
   }
-  /**
-   * Get the most recent memories.
-   */
+  /** Get the most recent memories. */
   async recent(limit = 10) {
     const { data } = await this.client.request("GET", `/api/memory?limit=${limit}`);
     return data;
   }
-  /**
-   * Update a memory's content, metadata, tags, or importance.
-   * If content changes, the embedding is automatically regenerated.
-   */
+  /** Update a memory. If content changes, embedding auto-regenerates. */
   async update(id, input) {
     const { data } = await this.client.request("PATCH", `/api/memory/${id}`, input);
     return data;
   }
-  /**
-   * Delete a memory by ID.
-   */
+  /** Delete a memory by ID. */
   async delete(id) {
     await this.client.request("DELETE", `/api/memory/${id}`);
+  }
+  /** Store multiple memories at once (max 25). Costs 1 credit each. */
+  async batchCreate(inputs) {
+    const { data } = await this.client.request("POST", "/api/memory/batch", { memories: inputs });
+    return data;
+  }
+  /** Delete multiple memories by IDs (max 100). Free operation. */
+  async batchDelete(ids) {
+    const { data } = await this.client.request("DELETE", "/api/memory/batch", { ids });
+    return data;
+  }
+  /** Summarize recent memories via LLM. Costs 5 credits. */
+  async summarize(limit = 20, query) {
+    const { data } = await this.client.request("POST", "/api/memory/summarize", { limit, query });
+    return data;
+  }
+  /** Share a memory with another tenant. */
+  async share(id, tenantId, permission = "read") {
+    await this.client.request("POST", `/api/memory/${id}/share`, { tenant_id: tenantId, permission });
+  }
+  /** List memories shared with this tenant by other agents. */
+  async sharedWithMe() {
+    const { data } = await this.client.request("GET", "/api/shared-with-me");
+    return data;
   }
 };
 
@@ -333,18 +336,113 @@ var StateAPI = class {
   }
 };
 
+// src/webhook.ts
+var WebhookAPI = class {
+  constructor(client) {
+    this.client = client;
+  }
+  client;
+  /** Register a webhook for event notifications. */
+  async create(input) {
+    const { data } = await this.client.request("POST", "/api/webhooks", input);
+    return data;
+  }
+  /** List all registered webhooks. */
+  async list() {
+    const { data } = await this.client.request("GET", "/api/webhooks");
+    return data;
+  }
+  /** Get webhook details by ID. */
+  async get(id) {
+    const { data } = await this.client.request("GET", `/api/webhooks/${id}`);
+    return data;
+  }
+  /** Update a webhook. */
+  async update(id, input) {
+    const { data } = await this.client.request("PATCH", `/api/webhooks/${id}`, input);
+    return data;
+  }
+  /** Delete a webhook. */
+  async delete(id) {
+    await this.client.request("DELETE", `/api/webhooks/${id}`);
+  }
+  /** Trigger retry of all failed webhook deliveries due for retry. */
+  async retryFailed() {
+    const { data } = await this.client.request(
+      "POST",
+      "/api/webhooks/retry"
+    );
+    return data;
+  }
+};
+
+// src/admin.ts
+var AdminAPI = class {
+  constructor(client) {
+    this.client = client;
+  }
+  client;
+  /** List all API keys for this tenant. */
+  async listKeys() {
+    const { data } = await this.client.request("GET", "/api/admin/keys");
+    return data;
+  }
+  /** Create a new API key. Returns the raw key once. */
+  async createKey(label) {
+    const { data } = await this.client.request("POST", "/api/admin/keys", { label });
+    return data;
+  }
+  /** Revoke (deactivate) an API key by ID. */
+  async revokeKey(id) {
+    await this.client.request("DELETE", `/api/admin/keys/${id}`);
+  }
+  /** List credit transaction history. */
+  async listTransactions(limit = 20) {
+    const { data } = await this.client.request("GET", `/api/admin/transactions?limit=${limit}`);
+    return data;
+  }
+  /** Get usage statistics. */
+  async getUsage(days = 7) {
+    const { data } = await this.client.request("GET", `/api/admin/usage?days=${days}`);
+    return data;
+  }
+};
+var CreditsAPI = class {
+  constructor(client) {
+    this.client = client;
+  }
+  client;
+  /** Get current credit balance and pricing info. */
+  async balance() {
+    const { data } = await this.client.request(
+      "GET",
+      "/api/credits"
+    );
+    return data;
+  }
+};
+
 // src/index.ts
 var Neura = class {
-  /** Memory operations — store, search, update, delete */
+  /** Memory operations — store, search, batch, update, delete, share */
   memory;
   /** State operations — key-value persistent storage */
   state;
+  /** Webhook operations — register, list, manage webhook endpoints */
+  webhooks;
+  /** Admin operations — API keys, transactions, usage stats */
+  admin;
+  /** Credits operations — check balance */
+  credits;
   /** Low-level HTTP client (access for advanced use) */
   http;
   constructor(options) {
     this.http = new HttpClient(options);
     this.memory = new MemoryAPI(this.http);
     this.state = new StateAPI(this.http);
+    this.webhooks = new WebhookAPI(this.http);
+    this.admin = new AdminAPI(this.http);
+    this.credits = new CreditsAPI(this.http);
   }
 };
 // Annotate the CommonJS export names for ESM import in node:

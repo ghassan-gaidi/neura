@@ -6,15 +6,7 @@ interface NeuraOptions {
     baseUrl?: string;
     /** Max retries on failure (default: 3) */
     maxRetries?: number;
-    /**
-     * Autonomous payment handling.
-     * When the API returns 402 (insufficient credits), the SDK can
-     * automatically pay in USDC on Base and retry the request.
-     *
-     * Two modes:
-     *   1. Callback — you handle sending USDC, SDK handles the rest
-     *   2. Private key — SDK sends USDC automatically (requires ethers)
-     */
+    /** Autonomous payment handling (x402). */
     autoPay?: AutoPayOptions;
 }
 /** x402 payment details from the API */
@@ -28,19 +20,8 @@ interface X402Details {
 }
 /** Configuration for autonomous payment handling */
 interface AutoPayOptions {
-    /**
-     * Callback invoked when a 402 is received.
-     * Send USDC using your own wallet logic and return the tx hash.
-     * The SDK then verifies the payment and retries the original request.
-     */
     onPaymentRequired?: (x402: X402Details) => Promise<string>;
-    /**
-     * Agent wallet private key (0x...).
-     * The SDK will automatically send USDC on Base.
-     * Requires ethers v6 to be installed.
-     */
     privateKey?: string;
-    /** Base RPC URL (default: https://mainnet.base.org) */
     rpcUrl?: string;
 }
 /** A stored memory entry */
@@ -86,12 +67,87 @@ interface SearchMemoryInput {
     limit?: number;
     min_score?: number;
 }
+/** Batch create result */
+interface BatchCreateResult {
+    stored: number;
+    memories: Memory[];
+}
+/** Batch delete result */
+interface BatchDeleteResult {
+    deleted: number;
+    ids: string[];
+}
+/** Summarize result */
+interface SummarizeResult {
+    summary: string;
+    memory_count: number;
+}
 /** A state entry */
 interface StateEntry {
     key: string;
     value: unknown;
     created_at: string;
     updated_at: string;
+}
+type WebhookEvent = 'memory.created' | 'memory.updated' | 'memory.deleted' | 'memory.expiring' | 'state.changed' | 'memory.shared' | 'credits.low';
+/** A registered webhook */
+interface Webhook {
+    id: string;
+    url: string;
+    events: WebhookEvent[];
+    is_active: boolean;
+    secret?: string | null;
+    created_at: string;
+    updated_at: string;
+}
+/** Input for creating a webhook */
+interface CreateWebhookInput {
+    url: string;
+    events: WebhookEvent[];
+    secret?: string;
+}
+/** An API key metadata */
+interface ApiKeyMeta {
+    id: string;
+    label: string;
+    is_active: boolean;
+    created_at: string;
+    last_used_at: string | null;
+}
+/** API key creation result (includes raw key once) */
+interface ApiKeyCreateResult extends ApiKeyMeta {
+    raw_key: string;
+}
+/** A credit transaction */
+interface Transaction {
+    id: string;
+    amount: number;
+    transaction_type: string;
+    description?: string;
+    created_at: string;
+}
+/** Usage statistics */
+interface UsageStats {
+    total_requests: number;
+    credits_used: number;
+    credits_purchased: number;
+    by_endpoint: Record<string, number>;
+    by_day: Record<string, number>;
+}
+/** Credit balance and pricing */
+interface CreditsBalance {
+    balance: number;
+    pricing: Record<string, number>;
+    top_up: {
+        via: {
+            chain: string;
+            token: string;
+            recipient: string;
+            pricePerThousand: string;
+            minTopUp: number;
+        };
+        url: string;
+    };
 }
 /** API error returned by the server */
 interface NeuraApiError {
@@ -148,37 +204,28 @@ declare class HttpClient {
 declare class MemoryAPI {
     private client;
     constructor(client: HttpClient);
-    /**
-     * Store a memory with auto-embedding.
-     * The content is automatically embedded via OpenAI.
-     */
+    /** Store a memory with auto-embedding. */
     create(input: CreateMemoryInput, idempotencyKey?: string): Promise<Memory>;
-    /**
-     * Search memories by semantic similarity.
-     * Returns memories ranked by relevance score.
-     *
-     * @example
-     * const results = await neura.memory.search('What are my risk preferences?')
-     */
+    /** Search memories by semantic similarity. */
     search(query: string, limit?: number): Promise<Memory[]>;
-    /**
-     * Advanced search with filters.
-     * Supports date ranges, metadata matching, and tag filtering.
-     */
+    /** Advanced search with filters (tags, date range, metadata). */
     searchAdvanced(input: SearchMemoryInput): Promise<Memory[]>;
-    /**
-     * Get the most recent memories.
-     */
+    /** Get the most recent memories. */
     recent(limit?: number): Promise<Memory[]>;
-    /**
-     * Update a memory's content, metadata, tags, or importance.
-     * If content changes, the embedding is automatically regenerated.
-     */
+    /** Update a memory. If content changes, embedding auto-regenerates. */
     update(id: string, input: UpdateMemoryInput): Promise<Memory>;
-    /**
-     * Delete a memory by ID.
-     */
+    /** Delete a memory by ID. */
     delete(id: string): Promise<void>;
+    /** Store multiple memories at once (max 25). Costs 1 credit each. */
+    batchCreate(inputs: CreateMemoryInput[]): Promise<BatchCreateResult>;
+    /** Delete multiple memories by IDs (max 100). Free operation. */
+    batchDelete(ids: string[]): Promise<BatchDeleteResult>;
+    /** Summarize recent memories via LLM. Costs 5 credits. */
+    summarize(limit?: number, query?: string): Promise<SummarizeResult>;
+    /** Share a memory with another tenant. */
+    share(id: string, tenantId: string, permission?: 'read' | 'write'): Promise<void>;
+    /** List memories shared with this tenant by other agents. */
+    sharedWithMe(): Promise<Memory[]>;
 }
 
 declare class StateAPI {
@@ -207,20 +254,72 @@ declare class StateAPI {
     delete(key: string): Promise<void>;
 }
 
+declare class WebhookAPI {
+    private client;
+    constructor(client: HttpClient);
+    /** Register a webhook for event notifications. */
+    create(input: CreateWebhookInput): Promise<Webhook>;
+    /** List all registered webhooks. */
+    list(): Promise<Webhook[]>;
+    /** Get webhook details by ID. */
+    get(id: string): Promise<Webhook>;
+    /** Update a webhook. */
+    update(id: string, input: Partial<CreateWebhookInput>): Promise<Webhook>;
+    /** Delete a webhook. */
+    delete(id: string): Promise<void>;
+    /** Trigger retry of all failed webhook deliveries due for retry. */
+    retryFailed(): Promise<{
+        processed: number;
+        succeeded: number;
+        failed: number;
+    }>;
+}
+
+declare class AdminAPI {
+    private client;
+    constructor(client: HttpClient);
+    /** List all API keys for this tenant. */
+    listKeys(): Promise<ApiKeyMeta[]>;
+    /** Create a new API key. Returns the raw key once. */
+    createKey(label?: string): Promise<ApiKeyCreateResult>;
+    /** Revoke (deactivate) an API key by ID. */
+    revokeKey(id: string): Promise<void>;
+    /** List credit transaction history. */
+    listTransactions(limit?: number): Promise<Transaction[]>;
+    /** Get usage statistics. */
+    getUsage(days?: number): Promise<UsageStats>;
+}
+/** Credits operations */
+declare class CreditsAPI {
+    private client;
+    constructor(client: HttpClient);
+    /** Get current credit balance and pricing info. */
+    balance(): Promise<{
+        balance: number;
+        pricing: Record<string, number>;
+    }>;
+}
+
 /**
  * Neura — External Brain for AI Agents
  *
- * Gives AI agents persistent memory and state via a simple HTTP API.
- * Create a client with your API key and start storing/retrieving memories instantly.
+ * Gives AI agents persistent memory, state, webhooks, and admin capabilities
+ * via a simple HTTP API.
  */
 declare class Neura {
-    /** Memory operations — store, search, update, delete */
+    /** Memory operations — store, search, batch, update, delete, share */
     memory: MemoryAPI;
     /** State operations — key-value persistent storage */
     state: StateAPI;
+    /** Webhook operations — register, list, manage webhook endpoints */
+    webhooks: WebhookAPI;
+    /** Admin operations — API keys, transactions, usage stats */
+    admin: AdminAPI;
+    /** Credits operations — check balance */
+    credits: CreditsAPI;
     /** Low-level HTTP client (access for advanced use) */
     http: HttpClient;
     constructor(options: NeuraOptions);
 }
 
-export { type ApiResponse, type AutoPayOptions, type CreateMemoryInput, type Memory, Neura, NeuraHttpError, type NeuraOptions, type RateLimitInfo, type SearchFilters, type SearchMemoryInput, type StateEntry, type UpdateMemoryInput, type X402Details };
+export { type ApiKeyCreateResult, type ApiKeyMeta, type ApiResponse, type AutoPayOptions, type BatchCreateResult, type BatchDeleteResult, type CreateMemoryInput, type CreateWebhookInput, type CreditsBalance, type Memory, Neura, NeuraHttpError, type NeuraOptions, type RateLimitInfo, type SearchFilters, type SearchMemoryInput, type StateEntry, type SummarizeResult, type Transaction, type UpdateMemoryInput, type UsageStats, type Webhook, type WebhookEvent, type X402Details };
