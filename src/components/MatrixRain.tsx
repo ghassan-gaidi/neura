@@ -18,6 +18,8 @@ export default function MatrixRain() {
     let columns: number[] = []
     let fontSize = 14
     const speeds: number[] = []
+    // Track whether each column is currently active (to avoid overcrowding)
+    let activeCols: boolean[] = []
 
     const resize = () => {
       canvas.width = window.innerWidth
@@ -27,8 +29,9 @@ export default function MatrixRain() {
       columns = Array.from({ length: cols }, () =>
         Math.floor(Math.random() * canvas.height * -1)
       )
+      activeCols = Array.from({ length: cols }, () => Math.random() > 0.5)
       for (let i = 0; i < cols; i++) {
-        speeds[i] = 0.5 + Math.random() * 1.5
+        speeds[i] = 1 + Math.random() * 2
       }
     }
 
@@ -36,25 +39,33 @@ export default function MatrixRain() {
     window.addEventListener('resize', resize)
 
     const draw = () => {
-      // Fade trail
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.08)'
+      // Fast fade — clears old characters quickly, no grey buildup
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
 
       ctx.font = `${fontSize}px "DM Mono", monospace`
 
       for (let i = 0; i < columns.length; i++) {
+        if (!activeCols[i]) continue
+
         const x = i * fontSize
         const y = columns[i] * fontSize
 
-        // Main character — faint white
+        // Trail characters — dim
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.25)'
+        ctx.fillText(CHARS[Math.floor(Math.random() * CHARS.length)], x, y - fontSize)
+
+        // Lead character — bright white
         const char = CHARS[Math.floor(Math.random() * CHARS.length)]
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'
         ctx.fillText(char, x, y)
 
         // Reset
-        if (y > canvas.height) {
-          columns[i] = Math.random() * -20
-          speeds[i] = 0.5 + Math.random() * 1.5
+        if (y > canvas.height + fontSize * 2) {
+          columns[i] = Math.random() * -50
+          speeds[i] = 1 + Math.random() * 2
+          // Re-activate column occasionally
+          activeCols[i] = Math.random() > 0.3
         }
 
         columns[i] += speeds[i]

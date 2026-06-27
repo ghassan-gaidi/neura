@@ -31,8 +31,8 @@ export default function SignupPage() {
 
   if (sent) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center px-6">
-        <div className="max-w-md w-full text-center">
+      <div className="text-white px-6 pt-16 md:pt-24">
+        <div className="max-w-md mx-auto text-center">
           <h1
             className="text-4xl font-bold mb-6 tracking-tight"
             style={{ fontFamily: 'var(--font-syne)' }}
@@ -55,8 +55,8 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center px-6">
-      <div className="max-w-md w-full">
+    <div className="text-white px-6 pt-16 md:pt-24">
+      <div className="max-w-md mx-auto">
         <h1
           className="text-4xl font-bold mb-3 tracking-tight"
           style={{ fontFamily: 'var(--font-syne)' }}

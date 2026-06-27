@@ -138,14 +138,6 @@ export default function DocsPage() {
             External brain for AI agents — persistent memory and state via HTTP.
             Designed so agents can use it without human help.
           </p>
-          <div className="flex gap-3 text-xs text-white/30">
-            <span className="border border-white/10 px-3 py-1">
-              OpenAPI: <Link href="/openapi.yaml" className="text-white/60 hover:text-white underline">openapi.yaml</Link>
-            </span>
-            <span className="border border-white/10 px-3 py-1">
-              SDKs: <a href="https://github.com/ghassan-gaidi/neura" className="text-white/60 hover:text-white underline" target="_blank" rel="noopener noreferrer">TypeScript · Python</a>
-            </span>
-          </div>
         </header>
 
         {/* Auth */}

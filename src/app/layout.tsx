@@ -115,13 +115,13 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
-      <body className="min-h-screen flex flex-col bg-black text-white">
+      <body className="min-h-screen flex flex-col text-white">
         <SoftwareApplicationSchema />
         <OrganizationSchema />
         <APIReferenceSchema />
         <MatrixRain />
         <Nav />
-        <main className="flex-1">{children}</main>
+        <main className="flex-1 relative z-10">{children}</main>
       </body>
     </html>
   );

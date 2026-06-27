@@ -1,13 +1,13 @@
 # Neura — Project Status
 
-**Last updated:** 2026-06-27 (Phase 9 complete, SDKs published)
+**Last updated:** 2026-06-27 (All phases complete, website cleanup)
 **Repo:** https://github.com/ghassan-gaidi/neura
 **Local path:** /home/leo/projects/neura
 
 ## Git State
 
 - **Remote:** origin → https://github.com/ghassan-gaidi/neura (fetch + push, working)
-- **HEAD:** a9e54a3 — `SDK v0.3.0: batch ops, webhooks, admin, credits APIs`
+- **HEAD:** e9394fa — `fix: signup page readability - increase text opacity, brighter inputs, visible labels`
 - **Branch:** main
 
 ## Deployment Health
@@ -106,4 +106,5 @@ Both SDKs support: Memory (CRUD + batch + summarize + share), State, Webhooks, A
 | 6 | ✅ Done | Self-serve signup (bugs fixed, triggers removed) |
 | 7 | ✅ Done | API key dashboard (key mgmt, revocation) |
 | 8 | ✅ Done | Product gaps (webhook retry, rate limit headers, batch ops, TTL cleanup) |
-| 9 | ✅ Done | OpenAPI v0.2.0, landing polish, SDK v0.3.0 publish |
+| 9 | ✅ Done | Growth (OpenAPI v0.2.0, landing polish, SDK v0.3.0) |
+| — | ✅ Done | Website cleanup: responsive design, readable colors, matrix rain fix |
