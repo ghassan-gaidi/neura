@@ -3,6 +3,10 @@
     {
       "path": "/api/payments/poll",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/webhooks/retry-cron",
+      "schedule": "0 0 * * *"
     }
   ]
 }

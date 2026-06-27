@@ -1,6 +1,7 @@
 /**
  * Webhook delivery system.
  * Fires webhooks asynchronously for important events.
+ * Failed deliveries are retried with exponential backoff.
  * In production, replace with a queue (Inngest, Bull, etc.).
  */
 
@@ -20,6 +21,15 @@ interface WebhookPayload {
   tenant_id: string
   data: Record<string, unknown>
   timestamp: string
+}
+
+const RETRY_DELAYS = [30, 120, 600, 3600, 21600] // 30s, 2min, 10min, 1hr, 6hr
+const MAX_RETRIES = RETRY_DELAYS.length
+
+function computeNextRetry(retryCount: number): Date | null {
+  if (retryCount >= MAX_RETRIES) return null // give up after max retries
+  const delayMs = RETRY_DELAYS[retryCount] * 1000
+  return new Date(Date.now() + delayMs)
 }
 
 /**
@@ -51,19 +61,20 @@ export async function fireWebhook(
 
     // Deliver to each webhook concurrently
     await Promise.allSettled(
-      webhooks.map((wh) => deliverWebhook(wh.id, tenantId, wh.url, wh.secret, payload))
+      webhooks.map((wh) => deliverWebhook(wh.id, wh.url, wh.secret, payload))
     )
   } catch (err) {
     console.error('fireWebhook error:', err)
   }
 }
 
-async function deliverWebhook(
+export async function deliverWebhook(
   webhookId: string,
-  tenantId: string,
   url: string,
   secret: string | null,
-  payload: WebhookPayload
+  payload: WebhookPayload,
+  existingDeliveryId?: string,
+  currentRetryCount = 0,
 ): Promise<void> {
   const body = JSON.stringify(payload)
   const headers: Record<string, string> = {
@@ -85,33 +96,125 @@ async function deliverWebhook(
     headers['X-Neura-Signature'] = btoa(String.fromCharCode(...new Uint8Array(signature)))
   }
 
+  const nextRetry = computeNextRetry(currentRetryCount)
+  const newRetryCount = currentRetryCount + 1
+
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers,
       body,
-      signal: AbortSignal.timeout(10_000), // 10s timeout
+      signal: AbortSignal.timeout(10_000),
     })
 
-    // Log delivery
-    await supabase.from('webhook_deliveries').insert({
-      webhook_id: webhookId,
-      tenant_id: tenantId,
-      event: payload.event,
-      payload,
-      status: response.ok ? 'delivered' : 'failed',
-      status_code: response.status,
-      response_body: await response.text().catch(() => ''),
-    }).then()
+    if (existingDeliveryId) {
+      // Update existing delivery record (retry)
+      await supabase.from('webhook_deliveries').update({
+        status: response.ok ? 'delivered' : 'failed',
+        status_code: response.status,
+        response_body: await response.text().catch(() => ''),
+        attempted_at: new Date().toISOString(),
+        next_retry_at: response.ok ? null : nextRetry?.toISOString() || null,
+        retry_count: newRetryCount,
+      }).eq('id', existingDeliveryId)
+    } else {
+      // First attempt — insert new delivery record
+      await supabase.from('webhook_deliveries').insert({
+        webhook_id: webhookId,
+        tenant_id: payload.tenant_id,
+        event: payload.event,
+        payload,
+        status: response.ok ? 'delivered' : 'failed',
+        status_code: response.status,
+        response_body: await response.text().catch(() => ''),
+        attempted_at: new Date().toISOString(),
+        next_retry_at: response.ok ? null : nextRetry?.toISOString() || null,
+        retry_count: newRetryCount,
+      })
+    }
   } catch (err: any) {
-    // Log failure
-    await supabase.from('webhook_deliveries').insert({
-      webhook_id: webhookId,
-      tenant_id: tenantId,
-      event: payload.event,
-      payload,
-      status: 'failed',
+    const record = {
+      status: 'failed' as const,
       response_body: err.message,
-    }).then()
+      attempted_at: new Date().toISOString(),
+      next_retry_at: nextRetry?.toISOString() || null,
+      retry_count: newRetryCount,
+    }
+
+    if (existingDeliveryId) {
+      await supabase.from('webhook_deliveries').update(record).eq('id', existingDeliveryId)
+    } else {
+      await supabase.from('webhook_deliveries').insert({
+        webhook_id: webhookId,
+        tenant_id: payload.tenant_id,
+        event: payload.event,
+        payload,
+        ...record,
+      })
+    }
   }
+}
+
+/**
+ * Process pending/failed webhook deliveries that are due for retry.
+ * Called by Vercel cron job.
+ */
+export async function retryFailedDeliveries(): Promise<{ processed: number; succeeded: number; failed: number }> {
+  const now = new Date().toISOString()
+
+  const { data: due, error } = await supabase
+    .from('webhook_deliveries')
+    .select('id, webhook_id, event, payload, retry_count')
+    .in('status', ['pending', 'failed'])
+    .lte('next_retry_at', now)
+    .limit(50)
+
+  if (error || !due?.length) {
+    return { processed: 0, succeeded: 0, failed: 0 }
+  }
+
+  let succeeded = 0
+  let failed = 0
+
+  await Promise.allSettled(
+    due.map(async (delivery) => {
+      // Get webhook URL
+      const { data: wh } = await supabase
+        .from('webhooks')
+        .select('url, secret, is_active')
+        .eq('id', delivery.webhook_id)
+        .single()
+
+      if (!wh || !wh.is_active) {
+        // Webhook was deleted or deactivated — mark as cancelled
+        await supabase.from('webhook_deliveries').update({
+          status: 'cancelled',
+          next_retry_at: null,
+        }).eq('id', delivery.id)
+        return
+      }
+
+      const payload = delivery.payload as WebhookPayload
+      await deliverWebhook(
+        delivery.webhook_id,
+        wh.url,
+        wh.secret,
+        payload,
+        delivery.id,
+        delivery.retry_count || 0,
+      )
+
+      // Check if it succeeded after this attempt
+      const { data: updated } = await supabase
+        .from('webhook_deliveries')
+        .select('status')
+        .eq('id', delivery.id)
+        .single()
+
+      if (updated?.status === 'delivered') succeeded++
+      else failed++
+    })
+  )
+
+  return { processed: due.length, succeeded, failed }
 }

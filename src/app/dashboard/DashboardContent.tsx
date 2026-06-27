@@ -8,6 +8,7 @@ type Memory = { id: string; content: string; tags: string[]; importance: number;
 type Transaction = { id: string; amount: number; transaction_type: string; description: string; created_at: string }
 type Usage = { total_requests: number; credits_used: number; credits_purchased: number; by_endpoint: Record<string, number>; by_day: Record<string, number> }
 type StateEntry = { key: string; value: any; created_at: string; updated_at: string }
+type ApiKeyEntry = { id: string; label: string; is_active: boolean; created_at: string; last_used_at: string | null }
 
 type Tab = 'usage' | 'billing' | 'memories' | 'keys' | 'state'
 
@@ -37,6 +38,7 @@ export default function DashboardContent() {
   const [usage, setUsage] = useState<Usage | null>(null)
   const [balance, setBalance] = useState(0)
   const [stateEntries, setStateEntries] = useState<StateEntry[]>([])
+  const [apiKeys, setApiKeys] = useState<ApiKeyEntry[]>([])
 
   // Controls
   const [searchQuery, setSearchQuery] = useState('')
@@ -127,18 +129,20 @@ export default function DashboardContent() {
   const loadData = useCallback(async () => {
     setDataLoading(true)
     try {
-      const [memRes, txRes, usageRes, creditRes, stateRes] = await Promise.all([
+      const [memRes, txRes, usageRes, creditRes, stateRes, keysRes] = await Promise.all([
         apiFetch('/api/memory?limit=15'),
         apiFetch('/api/admin/transactions?limit=20'),
         apiFetch('/api/admin/usage?days=7'),
         apiFetch('/api/credits'),
         apiFetch('/api/state'),
+        apiFetch('/api/admin/keys'),
       ])
       setMemories(memRes.data || [])
       setTransactions(txRes.data || [])
       setUsage(usageRes.data || null)
       setBalance(creditRes.data?.balance || 0)
       setStateEntries(stateRes.data || [])
+      setApiKeys(keysRes.data || [])
     } catch (err: any) {
       console.error('Load error:', err)
     } finally {
@@ -172,26 +176,6 @@ export default function DashboardContent() {
   const handleDeleteMemory = async (id: string) => {
     await apiFetch(`/api/memory/${id}`, { method: 'DELETE' })
     setMemories((p) => p.filter((m) => m.id !== id))
-  }
-
-  const handleCreateKey = async () => {
-    setNewKeyResult('')
-    try {
-      // Try Supabase Auth first, fallback to Neura API key auth
-      const { data: { session } } = await supabaseBrowser.auth.getSession()
-      const res = await fetch('/api/auth/create-key', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session?.access_token || apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ label: newKeyLabel || 'dashboard-key' }),
-      })
-      const result = await res.json()
-      if (!res.ok) throw new Error(result.error?.message || 'Failed')
-      setNewKeyResult(result.data.raw_key)
-      setNewKeyLabel('')
-    } catch (err: any) { setNewKeyResult('Error: ' + err.message) }
   }
 
   const handleTopUp = async () => {
@@ -461,18 +445,32 @@ export default function DashboardContent() {
         {/* Keys Tab */}
         {tab === 'keys' && (
           <div>
-            <div className="border-2 border-white/10 bg-white/[0.02] p-6 mb-6">
+            {/* Create new key */}
+            <div className="border-2 border-white/10 bg-white/[0.02] p-6 mb-8">
               <p className="text-sm font-bold mb-4" style={{ fontFamily: 'var(--font-syne)' }}>Create New API Key</p>
-              <div className="flex gap-2">
+              <div className="flex gap-2 mb-3">
                 <input
                   type="text"
                   value={newKeyLabel}
                   onChange={(e) => setNewKeyLabel(e.target.value)}
-                  placeholder="Key label"
+                  placeholder="Key label (e.g. production, staging, dev)"
                   className="flex-1 bg-black border-2 border-white/20 px-4 py-2 text-sm focus:outline-none focus:border-white"
                 />
                 <button
-                  onClick={handleCreateKey}
+                  onClick={async () => {
+                    setNewKeyResult('')
+                    try {
+                      const res = await apiFetch('/api/admin/keys', {
+                        method: 'POST',
+                        body: JSON.stringify({ label: newKeyLabel || `key-${Date.now()}` }),
+                      })
+                      setNewKeyResult(res.data?.raw_key || '')
+                      setNewKeyLabel('')
+                      await loadData()
+                    } catch (err: any) {
+                      setNewKeyResult('Error: ' + err.message)
+                    }
+                  }}
                   className="bg-white text-black px-4 py-2 text-sm font-bold border-2 border-white hover:bg-white/80 transition-colors"
                   style={{ fontFamily: 'var(--font-syne)' }}
                 >
@@ -480,7 +478,66 @@ export default function DashboardContent() {
                 </button>
               </div>
               {newKeyResult && (
-                <p className="mt-3 text-xs bg-black border border-white/10 p-2 break-all select-all">{newKeyResult}</p>
+                <div className="mt-3">
+                  <p className="text-xs text-white/40 mb-1">Copy this key now — it won't be shown again:</p>
+                  <p className="text-xs bg-black border border-white/10 p-2 break-all select-all font-mono">
+                    {newKeyResult}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Key list */}
+            <p className="text-sm font-bold mb-3" style={{ fontFamily: 'var(--font-syne)' }}>
+              API Keys ({apiKeys.length})
+            </p>
+            <div className="space-y-px">
+              {apiKeys.map((k) => (
+                <div key={k.id} className="bg-white/[0.02] border border-white/5 p-4 flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          k.is_active ? 'bg-green-500' : 'bg-red-500/50'
+                        }`}
+                      />
+                      <p className="text-sm font-bold truncate" style={{ fontFamily: 'var(--font-syne)' }}>
+                        {k.label}
+                      </p>
+                      <span className={`text-xs px-2 py-0.5 ${
+                        k.is_active
+                          ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+                          : 'bg-red-500/10 text-red-400/50 border border-red-500/20'
+                      }`}>
+                        {k.is_active ? 'Active' : 'Revoked'}
+                      </span>
+                    </div>
+                    <div className="flex gap-4 mt-2 text-xs text-white/30">
+                      <span>Created: {new Date(k.created_at).toLocaleDateString()}</span>
+                      <span>ID: {k.id.substring(0, 8)}...</span>
+                      {k.last_used_at && <span>Last used: {new Date(k.last_used_at).toLocaleDateString()}</span>}
+                    </div>
+                  </div>
+                  {k.is_active && (
+                    <button
+                      onClick={async () => {
+                        if (!confirm(`Revoke key "${k.label}"? This cannot be undone.`)) return
+                        try {
+                          await apiFetch(`/api/admin/keys/${k.id}`, { method: 'DELETE' })
+                          await loadData()
+                        } catch (err: any) {
+                          alert('Failed to revoke: ' + err.message)
+                        }
+                      }}
+                      className="text-white/30 hover:text-red-400 text-xs border border-white/10 hover:border-red-400/30 px-3 py-1.5 transition-colors ml-4 shrink-0"
+                    >
+                      Revoke
+                    </button>
+                  )}
+                </div>
+              ))}
+              {apiKeys.length === 0 && (
+                <p className="text-white/30 text-sm border border-white/5 p-4">No API keys yet.</p>
               )}
             </div>
           </div>

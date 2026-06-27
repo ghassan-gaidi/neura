@@ -11,13 +11,28 @@ interface ResponseMeta {
   credits_remaining?: number
 }
 
+interface RateLimitInfo {
+  limit: number
+  remaining: number
+  resetMs: number
+}
+
+function setRateLimitHeaders(headers: Headers, rl?: RateLimitInfo): void {
+  if (rl) {
+    headers.set('X-RateLimit-Limit', String(rl.limit))
+    headers.set('X-RateLimit-Remaining', String(rl.remaining))
+    headers.set('X-RateLimit-Reset', String(Math.ceil(rl.resetMs / 1000)))
+  }
+}
+
 /**
  * Send a successful JSON response with standard headers.
  */
 export function respond(
   data: unknown,
   status = 200,
-  meta?: ResponseMeta
+  meta?: ResponseMeta,
+  rateLimit?: RateLimitInfo,
 ): NextResponse {
   const body = meta ? { data, meta } : { data }
   const response = NextResponse.json(body, { status })
@@ -26,6 +41,8 @@ export function respond(
   if (meta?.credits_remaining !== undefined) {
     response.headers.set('X-Credits-Remaining', String(meta.credits_remaining))
   }
+
+  setRateLimitHeaders(response.headers, rateLimit)
 
   return response
 }
@@ -41,7 +58,8 @@ export function respondError(
     action?: string
     retry_after?: number
     docs_url?: string
-  }
+  },
+  rateLimit?: RateLimitInfo,
 ): NextResponse {
   const response = NextResponse.json(
     {
@@ -58,6 +76,8 @@ export function respondError(
   if (extras?.retry_after) {
     response.headers.set('Retry-After', String(extras.retry_after))
   }
+
+  setRateLimitHeaders(response.headers, rateLimit)
 
   return response
 }

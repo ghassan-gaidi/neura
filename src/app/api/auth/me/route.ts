@@ -33,7 +33,47 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (profileError || !profile) {
-      return respondError('not_found', 'User profile not found', 404)
+      // First visit — auto-create profile, API key, and credits
+      const tenantId = crypto.randomUUID()
+
+      // Create user profile
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert({ id: user.id, email: user.email, tenant_id: tenantId })
+
+      if (insertError) {
+        return respondError('internal_error', 'Failed to create profile: ' + insertError.message, 500)
+      }
+
+      // Create API key
+      const newRawKey = `sk-${crypto.randomBytes(32).toString('hex')}`
+      const keyHash = crypto.createHash('sha256').update(newRawKey).digest('hex')
+
+      const { data: newKey, error: keyInsertError } = await supabase
+        .from('api_keys')
+        .insert({ tenant_id: tenantId, key_hash: keyHash, label: 'default' })
+        .select('id, label, is_active, created_at, last_used_at')
+        .single()
+
+      if (keyInsertError) {
+        return respondError('internal_error', 'Failed to create API key: ' + keyInsertError.message, 500)
+      }
+
+      // Seed 1000 free credits
+      await supabase
+        .from('credit_balances')
+        .insert({ tenant_id: tenantId, balance: 1000 })
+
+      await supabase
+        .from('credit_transactions')
+        .insert({ tenant_id: tenantId, amount: 1000, balance_after: 1000, transaction_type: 'signup_bonus', description: 'Welcome to Neura — 1000 free credits' })
+
+      return respond({
+        user: { id: user.id, email: user.email, plan: 'free', created_at: new Date().toISOString() },
+        api_key: newKey,
+        raw_key: newRawKey,
+        credits: 1000,
+      })
     }
 
     // Check if user already has an API key
