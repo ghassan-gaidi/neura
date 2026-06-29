@@ -1,0 +1,19 @@
+name: Hermes Health Check
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # every 30 min
+  workflow_dispatch:
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check HF Space
+        run: |
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" https://leofalco-hermes-agent-cloud.hf.space/health)
+          echo "HF Space: $CODE"
+          if [ "$CODE" != "200" ]; then exit 1; fi
+      - name: Check Telegram Bot
+        run: |
+          RESP=$(curl -s https://api.telegram.org/bot8762919537:AAHfWuSgO_UpLnLpD2A9ZB3AtbtYgm0UA24/getMe)
+          echo "TG: $(echo $RESP | grep -o '"username":"[^"]*"')"
+          if echo "$RESP" | grep -q '"ok":true'; then echo "OK"; else exit 1; fi
