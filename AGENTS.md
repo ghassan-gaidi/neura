@@ -1,9 +1,9 @@
-# AGENTS.md — Neura Project
+# AGENTS.md — Neura
 
-> Context for autonomous agents working in this repo.
-
-## Overview
-Crypto intelligence dashboard. Next.js on Vercel, Supabase PostgreSQL backend.
+> Crypto intelligence dashboard via Dominion backend.
+> Vercel: neura-blond.vercel.app
+> Supabase: hykistvnlfhiywuifcak
+> TS SDK: neura-api@0.2.0
 
 ## Tech Stack
 - TypeScript/Next.js (App Router)
@@ -26,8 +26,9 @@ vercel deploy  # Deploy to production
 ## Architecture
 - Server components by default, client components only for interactive UI
 - Supabase for auth, database, and realtime
-- CF Worker at neura.leo2574.workers.dev for API routing
+- CF Worker for API routing
 
 ## Related
-- Streak: crypto-price-api.leo2574.workers.dev
+- **Dominion**: Crypto intelligence backend (crypto-empire-ten.vercel.app)
+- **PICKR**: Telegram crypto casino (@cr00k_bot)
 - Cron: daily at midnight (0 0 * * *)
