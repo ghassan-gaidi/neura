@@ -67,7 +67,18 @@ export async function PATCH(
     }
 
     const updates: Record<string, unknown> = {}
-    if (body.url) updates.url = body.url
+    if (body.url) {
+      // Validate URL format and protocol
+      try {
+        const parsed = new URL(body.url)
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+          return respondError('validation_error', 'url must use http or https protocol', 400)
+        }
+      } catch {
+        return respondError('validation_error', 'url must be a valid URL', 400)
+      }
+      updates.url = body.url
+    }
     if (body.events) updates.events = body.events
     if (body.is_active !== undefined) updates.is_active = body.is_active
     if (body.secret !== undefined) updates.secret = body.secret

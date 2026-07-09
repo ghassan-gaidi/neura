@@ -22,6 +22,16 @@ export async function POST(request: NextRequest) {
     if (!body.url || typeof body.url !== 'string') {
       return respondError('validation_error', 'url is required and must be a string', 400)
     }
+    // Validate URL format and protocol
+    let parsedUrl: URL
+    try {
+      parsedUrl = new URL(body.url)
+    } catch {
+      return respondError('validation_error', 'url must be a valid URL', 400)
+    }
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return respondError('validation_error', 'url must use http or https protocol', 400)
+    }
     if (!body.events || !Array.isArray(body.events) || body.events.length === 0) {
       return respondError('validation_error', 'events must be a non-empty array', 400)
     }
