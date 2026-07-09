@@ -12,7 +12,7 @@ import { checkCredits, deductCredits, buildX402Response } from '@/lib/credits'
 function getUsageMeta(auth: AuthContext, balance?: number) {
   return balance !== undefined
     ? { credits_remaining: balance }
-    : { credits_remaining: 99999 }
+    : {}
 }
 
 /**

@@ -43,11 +43,11 @@ export async function resolveApiKey(request: Request): Promise<AuthContext | nul
   }
 
   // Update last_used_at (fire-and-forget)
-  supabase
+  void supabase
     .from('api_keys')
     .update({ last_used_at: new Date().toISOString() })
     .eq('id', data.id)
-    .then()
+    .then(() => {}, () => {})
 
   const result = { tenantId: data.tenant_id, apiKeyId: data.id }
 

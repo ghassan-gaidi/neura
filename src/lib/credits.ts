@@ -102,7 +102,7 @@ export async function checkCredits(tenantId: string, method: string, pathname: s
       tenant_id: tenantId,
       balance: FREE_TIER.signupCredits,
       total_purchased: FREE_TIER.signupCredits,
-    }).then()
+    })
     return { allowed: true, balance: FREE_TIER.signupCredits, cost }
   }
 

@@ -6,12 +6,12 @@ import { AuthContext } from '@/lib/types'
  * Fire-and-forget — never blocks the response.
  */
 export function logUsage(auth: AuthContext, endpoint: string, tokensUsed = 0) {
-  supabase.from('usage_logs').insert({
+  void supabase.from('usage_logs').insert({
     tenant_id: auth.tenantId,
     api_key_id: auth.apiKeyId,
     endpoint,
     tokens_used: tokensUsed,
-  }).then()
+  }).then(() => {}, () => {})
 }
 
 /**

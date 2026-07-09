@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { resolveApiKey } from '@/lib/auth'
 import { generateEmbedding } from '@/lib/embeddings'
@@ -7,7 +7,6 @@ import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 import { SearchMemoryRequest } from '@/lib/types'
 import { checkCredits, deductCredits, buildX402Response } from '@/lib/credits'
-import { NextResponse } from 'next/server'
 
 /**
  * POST /api/memory/search
