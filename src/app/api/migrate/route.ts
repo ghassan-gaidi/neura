@@ -1,17 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const MIGRATE_KEY = process.env.NEURA_MIGRATE_KEY || 'migrate-neura-2024'
-const DB_PASSWORD = process.env.SUPABASE_DB_PASSWORD || ''
+const MIGRATE_KEY = process.env.NEURA_MIGRATE_KEY
+if (!MIGRATE_KEY) {
+  console.warn('[migrate] NEURA_MIGRATE_KEY not set — endpoint disabled')
+}
 
 export async function POST(req: NextRequest) {
+  // Hard-fail if no migration key configured
+  if (!MIGRATE_KEY) {
+    return NextResponse.json({ error: 'migration endpoint disabled' }, { status: 503 })
+  }
+
   const provided = req.headers.get('x-migration-key')
   if (provided !== MIGRATE_KEY) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
+
   const body = await req.json().catch(() => ({}))
   const sql = body.sql || ''
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+
+  if (!sql || typeof sql !== 'string') {
+    return NextResponse.json({ error: 'sql field required' }, { status: 400 })
+  }
+
+  // Block dangerous SQL patterns
+  const blocked = /\b(DROP\s+DATABASE|TRUNCATE|pg_|COPY\s+.*FROM\s+PROGRAM)\b/i
+  if (blocked.test(sql)) {
+    return NextResponse.json({ error: 'blocked SQL pattern' }, { status: 400 })
+  }
+
+  const DB_PASSWORD = process.env.SUPABASE_DB_PASSWORD || ''
+  if (!DB_PASSWORD) {
+    return NextResponse.json({ error: 'SUPABASE_DB_PASSWORD not configured' }, { status: 500 })
+  }
 
   try {
     const { default: { Pool } } = await import('pg')
@@ -24,19 +45,6 @@ export async function POST(req: NextRequest) {
     })
     await pool.query(sql)
     await pool.end()
-
-    // If the SQL was a function fix, test signup
-    if (sql.includes('handle_new_user') || sql.includes('create_user_api_key')) {
-      const testEmail = `test-${Date.now()}@neura-test.io`
-      const res = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': serviceRoleKey, 'Authorization': `Bearer ${serviceRoleKey}` },
-        body: JSON.stringify({ email: testEmail, password: 'TestPass123!', email_confirm: true }),
-      })
-      const data = await res.json()
-      return NextResponse.json({ sql_ok: true, signup_test: { status: res.status, body: data, email: testEmail } })
-    }
-
     return NextResponse.json({ success: true })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })

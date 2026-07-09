@@ -4,9 +4,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 let _client: SupabaseClient | null = null
 
 /**
- * Supabase admin client using service_role key (lazy-initialized).
- * Tables live in the public schema (dedicated project for Neura).
- * Lazy init avoids build failures when env vars aren't available yet.
+ * Get the Supabase admin client (service_role key).
+ * Lazy-initialized on first call — safe for module-level imports.
  */
 export function getSupabase(): SupabaseClient {
   if (!_client) {
@@ -27,10 +26,13 @@ export function getSupabase(): SupabaseClient {
   return _client
 }
 
-/** @deprecated Use getSupabase() instead — keep for backward compat */
-export const supabase = new Proxy({} as SupabaseClient, {
+/**
+ * Lazy-initialized Supabase client.
+ * Use `getSupabase()` in new code — this export exists for backward compat.
+ */
+export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
   get(_, prop) {
-    const client = getSupabase()
-    return (client as any)[prop]
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (getSupabase() as any)[prop]
   },
-})
+}) as SupabaseClient

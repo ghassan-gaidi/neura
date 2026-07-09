@@ -141,6 +141,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Semantic search — costs 1 credit
+    // Check credits BEFORE generating embedding to avoid wasting API calls
     const creditCheck = await checkCredits(auth.tenantId, 'GET', '/api/memory')
     if (!creditCheck.allowed) {
       const x402 = buildX402Response(auth.tenantId, creditCheck.cost)
