@@ -7,13 +7,12 @@ jobs:
   health:
     runs-on: ubuntu-latest
     steps:
-      - name: Check HF Space
+      - name: Check HF Space (warn-only, space offline since 2026-08-22)
         run: |
           CODE=$(curl -s -o /dev/null -w "%{http_code}" https://leofalco-hermes-agent-cloud.hf.space/health)
-          echo "HF Space: $CODE"
-          if [ "$CODE" != "200" ]; then exit 1; fi
-      - name: Check Telegram Bot
+          echo "HF Space: $CODE (informational only)"
+      - name: Check Telegram Bot (primary gateway)
         run: |
-          RESP=$(curl -s https://api.telegram.org/bot8762919537:AAHfWuSgO_UpLnLpD2A9ZB3AtbtYgm0UA24/getMe)
+          RESP=$(curl -s https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/getMe)
           echo "TG: $(echo $RESP | grep -o '"username":"[^"]*"')"
           if echo "$RESP" | grep -q '"ok":true'; then echo "OK"; else exit 1; fi
