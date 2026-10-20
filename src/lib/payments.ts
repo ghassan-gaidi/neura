@@ -152,7 +152,7 @@ export async function redeemPayment(
   tenantId: string,
   paymentTx: string,
   amountUsdc: string
-): Promise<{ success: boolean; creditsAdded: number; newBalance: number }> {
+): Promise<{ success: boolean; creditsAdded: number; newBalance: number; error?: string }> {
   const creditsToAdd = Math.floor(
     (parseFloat(amountUsdc) / parseFloat(X402_CONFIG.pricePerThousand)) * 1000
   )
@@ -169,6 +169,12 @@ export async function redeemPayment(
   })
 
   if (error) {
+    // Double-redemption: the RPC raised `payment_already_redeemed` or the
+    // partial unique index rejected the row (23505). No credits were added.
+    if (error.message?.includes('payment_already_redeemed') || error.code === '23505') {
+      return { success: false, creditsAdded: 0, newBalance: 0, error: 'payment_already_redeemed' }
+    }
+    console.error('redeem_payment failed:', error.message)
     throw new Error(`Failed to redeem payment: ${error.message}`)
   }
 

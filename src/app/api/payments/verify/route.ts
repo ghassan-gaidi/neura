@@ -54,6 +54,12 @@ export async function POST(request: NextRequest) {
       verification.details!.amount
     )
 
+    if (!result.success) {
+      return respondError('conflict', result.error || 'Payment could not be redeemed', 409, {
+        action: 'resolve_conflict', retry_after: 30,
+      })
+    }
+
     return respond({
       credits_added: result.creditsAdded,
       balance: result.newBalance,
