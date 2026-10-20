@@ -4,8 +4,12 @@
  */
 const { createClient } = require('@supabase/supabase-js')
 
-const SUPABASE_URL = 'https://hykistvnlfhiywuifcak.supabase.co'
-const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5a2lzdHZubGZoaXl3dWlmY2FrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODc2ODc4MCwiZXhwIjoyMDk0MzQ0NzgwfQ.KjsPcwJrutJSYY8y1m-AT6Cx08oos7umKnxuiBG1t8s'
+const SUPABASE_URL = process.env.SUPABASE_URL
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+if (!SUPABASE_URL || !SERVICE_KEY) {
+  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
+  process.exit(1)
+}
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
 

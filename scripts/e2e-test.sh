@@ -56,8 +56,8 @@ echo "▸ 2. Signup Flow"
 echo "────────────────"
 
 # Create a test user via Supabase Auth
-SUPABASE_URL="https://hykistvnlfhiywuifcak.supabase.co"
-ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5a2lzdHZubGZoaXl3dWlmY2FrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3Njg3ODAsImV4cCI6MjA5NDM0NDc4MH0.wHHeXIQuh9i544p4olXgCjla5UE5yoC3sqAS1HJLrnQ"
+SUPABASE_URL="${SUPABASE_URL:?SUPABASE_URL is required}"
+ANON_KEY="${SUPABASE_ANON_KEY:?SUPABASE_ANON_KEY is required}"
 TEST_EMAIL="e2e-test-$(date +%s)@neura.test"
 TEST_PASS="TestPass123!"
 
