@@ -25,7 +25,7 @@ export async function GET(
 
     const { data, error } = await supabase
       .from('webhooks')
-      .select('id, url, events, is_active, secret, created_at, updated_at')
+      .select('id, url, events, is_active, created_at, updated_at')
       .eq('id', id)
       .eq('tenant_id', auth.tenantId)
       .single()

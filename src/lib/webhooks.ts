@@ -68,6 +68,21 @@ export async function fireWebhook(
   }
 }
 
+/**
+ * Compute the HMAC-SHA256 signature for a webhook body, base64-encoded.
+ * This is the value sent in the X-Neura-Signature header.
+ */
+export async function signPayload(secret: string, body: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw', encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false, ['sign']
+  )
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(body))
+  return btoa(String.fromCharCode(...new Uint8Array(signature)))
+}
+
 export async function deliverWebhook(
   webhookId: string,
   url: string,
@@ -86,14 +101,7 @@ export async function deliverWebhook(
 
   // Add HMAC signature if secret is configured
   if (secret) {
-    const encoder = new TextEncoder()
-    const key = await crypto.subtle.importKey(
-      'raw', encoder.encode(secret),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false, ['sign']
-    )
-    const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(body))
-    headers['X-Neura-Signature'] = btoa(String.fromCharCode(...new Uint8Array(signature)))
+    headers['X-Neura-Signature'] = await signPayload(secret, body)
   }
 
   const nextRetry = computeNextRetry(currentRetryCount)
