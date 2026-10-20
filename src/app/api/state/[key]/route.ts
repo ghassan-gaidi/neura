@@ -4,6 +4,7 @@ import { resolveApiKey } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/middleware'
 import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
+import { fireWebhook } from '@/lib/webhooks'
 
 /**
  * GET /api/state/[key]
@@ -86,6 +87,7 @@ export async function DELETE(
       return respondError('internal_error', 'Delete failed: ' + error.message, 500)
     }
 
+    fireWebhook(auth.tenantId, 'state.changed', { key })
     return respond({ key, deleted: true }, 200)
   } catch (err: any) {
     console.error('DELETE /api/state/:key error:', err)

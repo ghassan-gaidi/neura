@@ -4,6 +4,7 @@ import { resolveApiKey } from '@/lib/auth'
 import { checkRateLimit, withIdempotency } from '@/lib/middleware'
 import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
+import { fireWebhook } from '@/lib/webhooks'
 import { UpsertStateRequest, AuthContext } from '@/lib/types'
 
 /**
@@ -46,6 +47,10 @@ export async function POST(request: NextRequest) {
       }
 
       logUsage(auth, 'POST /api/state')
+      fireWebhook(auth.tenantId, 'state.changed', {
+        key: body.key,
+        value: body.value,
+      })
       return respond(data, 201)
     })(request, auth)
   } catch (err: any) {

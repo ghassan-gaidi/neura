@@ -37,6 +37,9 @@ export const FREE_TIER = {
   rateLimit: 100,
 } as const
 
+/** Fire the `credits.low` webhook when the balance falls to or below this. */
+export const CREDITS_LOW_THRESHOLD = parseInt(process.env.CREDITS_LOW_THRESHOLD || '100', 10)
+
 /**
  * Check if a tenant has enough credits for an operation.
  * Returns current balance and whether the operation is allowed.

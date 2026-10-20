@@ -5,6 +5,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { fireWebhook } from '@/lib/webhooks'
 
 export async function GET(request: NextRequest) {
   if (request.headers.get('x-vercel-cron') !== '1' && process.env.VERCEL_ENV === 'production') {
@@ -12,6 +13,28 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // Notify memories that will expire within the next 24 hours
+    const { data: expiring } = await supabase
+      .from('memories')
+      .select('id, tenant_id, expires_at')
+      .gt('expires_at', new Date().toISOString())
+      .lt('expires_at', new Date(Date.now() + 86_400_000).toISOString())
+
+    const byTenant = new Map<string, NonNullable<typeof expiring>>()
+    for (const mem of expiring || []) {
+      const list = byTenant.get(mem.tenant_id) || []
+      list.push(mem)
+      byTenant.set(mem.tenant_id, list)
+    }
+    for (const [tenantId, mems] of byTenant) {
+      for (const mem of mems) {
+        fireWebhook(tenantId, 'memory.expiring', {
+          memory_id: mem.id,
+          expires_at: mem.expires_at,
+        })
+      }
+    }
+
     const { data: deleted, error } = await supabase
       .from('memories')
       .delete()
