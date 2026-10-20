@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     const rl = checkRateLimit(auth.apiKeyId)
     if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
 
-    const result = await retryFailedDeliveries()
+    const result = await retryFailedDeliveries(auth.tenantId)
     return respond(result, 200)
   } catch (err: any) {
     console.error('POST /api/webhooks/retry error:', err)

@@ -159,15 +159,21 @@ export async function deliverWebhook(
  * Process pending/failed webhook deliveries that are due for retry.
  * Called by Vercel cron job.
  */
-export async function retryFailedDeliveries(): Promise<{ processed: number; succeeded: number; failed: number }> {
+export async function retryFailedDeliveries(tenantId?: string): Promise<{ processed: number; succeeded: number; failed: number }> {
   const now = new Date().toISOString()
 
-  const { data: due, error } = await supabase
+  let dueQuery = supabase
     .from('webhook_deliveries')
     .select('id, webhook_id, event, payload, retry_count')
     .in('status', ['pending', 'failed'])
     .lte('next_retry_at', now)
     .limit(50)
+
+  if (tenantId) {
+    dueQuery = dueQuery.eq('tenant_id', tenantId)
+  }
+
+  const { data: due, error } = await dueQuery
 
   if (error || !due?.length) {
     return { processed: 0, succeeded: 0, failed: 0 }
