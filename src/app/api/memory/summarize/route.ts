@@ -72,12 +72,13 @@ export async function POST(request: NextRequest) {
       }))
     }
 
+    const summaryType = body.type || 'extractive'
+
     if (memories.length === 0) {
-      return respond({ summary: 'No memories found to summarize.', total_memories: 0 }, 200)
+      return respond({ summary: 'No memories found to summarize.', total_memories: 0, summary_type: summaryType, memory_ids: [] }, 200)
     }
 
     // Build summary
-    const summaryType = body.type || 'extractive'
     let summary: string
 
     if (summaryType === 'extractive') {
