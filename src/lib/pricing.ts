@@ -41,6 +41,14 @@ export function isTestTopUpAllowed(env: Record<string, string | undefined> = pro
  * Exact key match first, then the longest prefix match.
  * Returns 0 for unknown free operations, 1 as the default for unknown paid ones.
  */
+/**
+ * Cost of a batch create: 1 credit per memory.
+ * The batch endpoint caps a single request at 25 memories.
+ */
+export function batchCost(memoryCount: number): number {
+  return Math.max(0, Math.floor(memoryCount))
+}
+
 export function getCreditCost(method: string, pathname: string): number {
   const key = `${method} ${pathname}`
   if (PRICING[key] !== undefined) return PRICING[key]

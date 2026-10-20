@@ -104,16 +104,18 @@ export async function deductCredits(
   tenantId: string,
   method: string,
   pathname: string,
-  referenceId?: string
+  referenceId?: string,
+  amountOverride?: number,
+  descriptionOverride?: string
 ): Promise<number | null> {
-  const cost = getCreditCost(method, pathname)
+  const cost = amountOverride ?? getCreditCost(method, pathname)
   if (cost === 0) return null
 
   const { data, error } = await supabase
     .rpc('deduct_credits', {
       p_tenant_id: tenantId,
       p_amount: cost,
-      p_description: `${method} ${pathname}`,
+      p_description: descriptionOverride ?? `${method} ${pathname}`,
       p_reference_id: referenceId || null,
     })
 

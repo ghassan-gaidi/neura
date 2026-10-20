@@ -7,6 +7,7 @@ import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 import { fireWebhook } from '@/lib/webhooks'
 import { checkCredits, deductCredits, buildX402Response } from '@/lib/credits'
+import { batchCost } from '@/lib/pricing'
 import { AuthContext } from '@/lib/types'
 
 const MAX_BATCH_CREATE = 25
@@ -51,10 +52,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Credits check
-    const totalCost = body.memories.length
+    // Credits check — 1 credit per memory in the batch
+    const totalCost = batchCost(body.memories.length)
     const creditCheck = await checkCredits(auth.tenantId, 'POST', '/api/memory/batch')
-    if (!creditCheck.allowed || (creditCheck.balance || 0) < totalCost) {
+    if (!creditCheck.allowed || creditCheck.balance < totalCost) {
       const x402 = buildX402Response(auth.tenantId, totalCost)
       return NextResponse.json(
         { error: x402 },
@@ -101,7 +102,14 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const newBalance = await deductCredits(auth.tenantId, 'POST', '/api/memory/batch', `batch-${Date.now()}`)
+    const newBalance = await deductCredits(
+      auth.tenantId,
+      'POST',
+      '/api/memory/batch',
+      `batch-${Date.now()}`,
+      totalCost,
+      `POST /api/memory/batch (${body.memories.length} memories)`
+    )
     return respond({ stored: data?.length || 0, memories: data || [] }, 201, getUsageMeta(auth, newBalance ?? undefined))
   } catch (err: any) {
     console.error('POST /api/memory/batch error:', err)

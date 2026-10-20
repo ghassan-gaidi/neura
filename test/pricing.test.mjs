@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { getCreditCost } from '../src/lib/pricing.ts'
+import { getCreditCost, batchCost } from '../src/lib/pricing.ts'
 
 test('batch is not priced by the shorter memory prefix', () => {
   assert.equal(getCreditCost('POST', '/api/memory/batch'), 1)
@@ -23,4 +23,10 @@ test('parameterized routes are priced by the most specific pattern', () => {
 test('state and webhook operations are free', () => {
   assert.equal(getCreditCost('POST', '/api/state'), 0)
   assert.equal(getCreditCost('POST', '/api/webhooks'), 0)
+})
+
+test('a batch of N memories costs N credits', () => {
+  assert.equal(batchCost(1), 1)
+  assert.equal(batchCost(10), 10)
+  assert.equal(batchCost(25), 25)
 })
