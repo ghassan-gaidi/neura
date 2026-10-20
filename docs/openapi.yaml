@@ -275,6 +275,11 @@ paths:
                 query:
                   type: string
                   description: Optional query to filter memories before summarization
+                memory_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
       responses:
         "200":
           description: Summary generated
@@ -288,8 +293,16 @@ paths:
                     properties:
                       summary:
                         type: string
-                      memory_count:
+                      total_memories:
                         type: integer
+                      summary_type:
+                        type: string
+                        enum: [extractive, abstractive]
+                      memory_ids:
+                        type: array
+                        items:
+                          type: string
+                          format: uuid
         "401":
           $ref: "#/components/responses/Unauthorized"
         "402":

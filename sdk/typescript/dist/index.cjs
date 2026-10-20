@@ -278,9 +278,20 @@ var MemoryAPI = class {
     const { data } = await this.client.request("DELETE", "/api/memory/batch", { ids });
     return data;
   }
-  /** Summarize recent memories via LLM. Costs 5 credits. */
+  /**
+   * Summarize memories via LLM. Costs 5 credits.
+   * Pass a query to summarize by relevance, or omit it to summarize the
+   * tenant's most recent memories.
+   */
   async summarize(limit = 20, query) {
-    const { data } = await this.client.request("POST", "/api/memory/summarize", { limit, query });
+    let body;
+    if (query) {
+      body = { limit, query };
+    } else {
+      const recent = await this.recent(limit);
+      body = { limit, memory_ids: recent.map((m) => m.id) };
+    }
+    const { data } = await this.client.request("POST", "/api/memory/summarize", body);
     return data;
   }
   /** Share a memory with another tenant. */

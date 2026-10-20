@@ -80,7 +80,9 @@ interface BatchDeleteResult {
 /** Summarize result */
 interface SummarizeResult {
     summary: string;
-    memory_count: number;
+    total_memories: number;
+    summary_type: 'extractive' | 'abstractive';
+    memory_ids: string[];
 }
 /** A state entry */
 interface StateEntry {
@@ -220,7 +222,11 @@ declare class MemoryAPI {
     batchCreate(inputs: CreateMemoryInput[]): Promise<BatchCreateResult>;
     /** Delete multiple memories by IDs (max 100). Free operation. */
     batchDelete(ids: string[]): Promise<BatchDeleteResult>;
-    /** Summarize recent memories via LLM. Costs 5 credits. */
+    /**
+     * Summarize memories via LLM. Costs 5 credits.
+     * Pass a query to summarize by relevance, or omit it to summarize the
+     * tenant's most recent memories.
+     */
     summarize(limit?: number, query?: string): Promise<SummarizeResult>;
     /** Share a memory with another tenant. */
     share(id: string, targetTenantId: string, permission?: 'read' | 'write'): Promise<void>;

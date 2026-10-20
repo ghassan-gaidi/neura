@@ -92,14 +92,21 @@ class MemoryAPI:
         return result["data"]
 
     def summarize(self, limit: int = 20, query: Optional[str] = None) -> dict:
-        """Summarize recent memories via LLM. Costs 5 credits.
+        """Summarize memories via LLM. Costs 5 credits.
+
+        Pass a query to summarize by relevance, or omit it to summarize the
+        tenant's most recent memories.
 
         Returns:
-            {"summary": str, "memory_count": int}
+            {"summary": str, "total_memories": int, "summary_type": str,
+             "memory_ids": list}
         """
-        body = {"limit": limit}
         if query:
-            body["query"] = query
+            body = {"limit": limit, "query": query}
+        else:
+            recent = self.recent(limit)
+            body = {"limit": limit, "memory_ids": [m["id"] for m in recent]}
+
         result = self._client.request("POST", "/api/memory/summarize", body)
         return result["data"]
 

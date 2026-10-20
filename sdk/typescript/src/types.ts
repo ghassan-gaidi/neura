@@ -96,7 +96,9 @@ export interface BatchDeleteResult {
 /** Summarize result */
 export interface SummarizeResult {
   summary: string
-  memory_count: number
+  total_memories: number
+  summary_type: 'extractive' | 'abstractive'
+  memory_ids: string[]
 }
 
 // ─── State ─────────────────────────────────────────────────
