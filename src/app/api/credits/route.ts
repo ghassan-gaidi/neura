@@ -5,6 +5,7 @@ import { checkRateLimit } from '@/lib/middleware'
 import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 import { getBalance, X402_CONFIG } from '@/lib/credits'
+import { isTestTopUpAllowed } from '@/lib/pricing'
 
 /**
  * GET /api/credits
@@ -63,11 +64,17 @@ export async function POST(request: NextRequest) {
 
     // Production path: verify on-chain payment
     let creditsToAdd = 0
-    let verifiedPayment = false
 
     if (body.test_top_up) {
+      if (!isTestTopUpAllowed()) {
+        return respondError(
+          'validation_error',
+          'test_top_up is disabled in production',
+          400,
+          { action: 'use_payment_tx' }
+        )
+      }
       creditsToAdd = body.credits || 1000
-      verifiedPayment = true
     } else if (body.payment_tx) {
       // Verify the transaction on-chain
       const { verifyPayment, redeemPayment } = await import('@/lib/payments')
@@ -123,7 +130,7 @@ export async function POST(request: NextRequest) {
       tenant_id: auth.tenantId,
       amount: creditsToAdd,
       balance_after: newBalance,
-      transaction_type: body.test_top_up ? 'bonus' : 'purchase',
+      transaction_type: 'bonus',
       description: `Top-up: +${creditsToAdd} credits`,
       reference_id: body.payment_tx || null,
     })

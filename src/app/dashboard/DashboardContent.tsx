@@ -44,8 +44,6 @@ export default function DashboardContent() {
   const [searchQuery, setSearchQuery] = useState('')
   const [newKeyLabel, setNewKeyLabel] = useState('')
   const [newKeyResult, setNewKeyResult] = useState('')
-  const [topUpAmount, setTopUpAmount] = useState('1000')
-  const [topUpResult, setTopUpResult] = useState('')
 
   // Auto-detect Supabase Auth session on mount
   useEffect(() => {
@@ -178,19 +176,6 @@ export default function DashboardContent() {
   const handleDeleteMemory = async (id: string) => {
     await apiFetch(`/api/memory/${id}`, { method: 'DELETE' })
     setMemories((p) => p.filter((m) => m.id !== id))
-  }
-
-  const handleTopUp = async () => {
-    setTopUpResult('Processing...')
-    try {
-      const res = await apiFetch('/api/credits/top-up', {
-        method: 'POST',
-        body: JSON.stringify({ test_top_up: true, credits: parseInt(topUpAmount) }),
-      })
-      setTopUpResult(`+${res.data.credits_added} credits added. New balance: ${res.data.balance}`)
-      setBalance(res.data.balance)
-      await loadData()
-    } catch (err: any) { setTopUpResult('Error: ' + err.message) }
   }
 
   // Auth screen
@@ -332,32 +317,6 @@ export default function DashboardContent() {
         {/* Billing Tab */}
         {tab === 'billing' && (
           <div>
-            {/* Top Up */}
-            <div className="border-2 border-white/10 bg-white/[0.02] p-6 mb-8">
-              <p className="text-sm font-bold mb-4" style={{ fontFamily: 'var(--font-syne)' }}>Top Up Credits (test mode)</p>
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  value={topUpAmount}
-                  onChange={(e) => setTopUpAmount(e.target.value)}
-                  className="bg-black border-2 border-white/20 px-4 py-2 text-sm w-32 focus:outline-none focus:border-white"
-                />
-                <button
-                  onClick={handleTopUp}
-                  className="bg-white text-black px-4 py-2 text-sm font-bold border-2 border-white hover:bg-white/80 transition-colors"
-                  style={{ fontFamily: 'var(--font-syne)' }}
-                >
-                  Add Test Credits
-                </button>
-              </div>
-              {topUpResult && (
-                <p className="mt-3 text-xs text-white/40">{topUpResult}</p>
-              )}
-              <p className="mt-4 text-xs text-white/20">
-                In production, agents send USDC on Base and call POST /api/payments/verify
-              </p>
-            </div>
-
             {/* Transactions */}
             <p className="text-sm font-bold mb-3" style={{ fontFamily: 'var(--font-syne)' }}>Transaction History</p>
             <div className="space-y-px">

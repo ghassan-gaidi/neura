@@ -28,6 +28,15 @@ export const PRICING: Record<string, number> = {
 }
 
 /**
+ * Whether the `test_top_up` free-credit shortcut is permitted.
+ * Off unless ALLOW_TEST_TOP_UP is explicitly "true", so a production
+ * deployment can never mint credits from a request body.
+ */
+export function isTestTopUpAllowed(env: Record<string, string | undefined> = process.env): boolean {
+  return env.ALLOW_TEST_TOP_UP === 'true'
+}
+
+/**
  * Resolve the credit cost of a request.
  * Exact key match first, then the longest prefix match.
  * Returns 0 for unknown free operations, 1 as the default for unknown paid ones.
