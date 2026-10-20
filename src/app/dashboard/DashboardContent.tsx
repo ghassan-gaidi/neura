@@ -153,10 +153,12 @@ export default function DashboardContent() {
   // Auto-login when apiKey is set
   useEffect(() => {
     if (apiKey && !authenticated) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-login on mount; setState is intentional
       login()
     }
   }, [apiKey])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- data load on mount; setState is intentional
   useEffect(() => { if (authenticated) loadData() }, [authenticated, loadData])
 
   const handleSearch = async () => {
@@ -479,7 +481,7 @@ export default function DashboardContent() {
               </div>
               {newKeyResult && (
                 <div className="mt-3">
-                  <p className="text-xs text-white/40 mb-1">Copy this key now — it won't be shown again:</p>
+                  <p className="text-xs text-white/40 mb-1">Copy this key now — it won&apos;t be shown again:</p>
                   <p className="text-xs bg-black border border-white/10 p-2 break-all select-all font-mono">
                     {newKeyResult}
                   </p>
