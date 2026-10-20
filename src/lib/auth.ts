@@ -7,6 +7,9 @@ import { NextResponse } from 'next/server'
  * Auth cache: avoids DB lookup on every request for the same key.
  * In production, swap to Redis/Vercel KV.
  */
+/** Max cached API keys. Evicted oldest-first so the map cannot grow without bound. */
+const AUTH_CACHE_MAX_ENTRIES = 1000
+
 const authCache = new Map<string, { tenantId: string; apiKeyId: string; cachedAt: number }>()
 const CACHE_TTL_MS = 60_000 // 1 minute
 
@@ -51,7 +54,11 @@ export async function resolveApiKey(request: Request): Promise<AuthContext | nul
 
   const result = { tenantId: data.tenant_id, apiKeyId: data.id }
 
-  // Cache it
+  // Cache it, evicting the oldest entry when full
+  if (authCache.size >= AUTH_CACHE_MAX_ENTRIES) {
+    const oldestKey = authCache.keys().next().value
+    if (oldestKey !== undefined) authCache.delete(oldestKey)
+  }
   authCache.set(rawKey, { ...result, cachedAt: Date.now() })
 
   return result
