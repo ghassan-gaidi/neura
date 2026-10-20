@@ -44,14 +44,20 @@ export async function POST(request: NextRequest) {
     const minScore = body.min_score || 0.0
 
     if (body.query) {
-      // Vector search
+      // Vector search with SQL-side filters before LIMIT
       const queryEmbedding = body.embedding || await generateEmbedding(body.query)
+      const f = body.filters || {}
 
-      const { data, error } = await supabase.rpc('search_memories', {
+      const { data, error } = await supabase.rpc('search_memories_filtered', {
         p_tenant_id: auth.tenantId,
         p_embedding: queryEmbedding,
         p_limit: limit,
         p_min_score: minScore,
+        p_tags: f.tags?.length ? f.tags : null,
+        p_importance_min: f.importance_min ?? null,
+        p_importance_max: f.importance_max ?? null,
+        p_date_from: f.date_from ?? null,
+        p_date_to: f.date_to ?? null,
       })
 
       if (error) {
@@ -63,9 +69,9 @@ export async function POST(request: NextRequest) {
         score: r.similarity,
       }))
 
-      // Apply client-side filters
-      if (body.filters) {
-        results = applyFilters(results, body.filters)
+      // metadata is not expressible in the RPC; apply it here only
+      if (f.metadata) {
+        results = applyFilters(results, { metadata: f.metadata })
       }
 
       logUsage(auth, 'POST /api/memory/search')
@@ -97,6 +103,11 @@ export async function POST(request: NextRequest) {
       }
       if (body.filters.date_to) {
         query = query.lte('created_at', body.filters.date_to)
+      }
+      if (body.filters.metadata) {
+        for (const [key, value] of Object.entries(body.filters.metadata)) {
+          query = query.contains('metadata', { [key]: value })
+        }
       }
     }
 
