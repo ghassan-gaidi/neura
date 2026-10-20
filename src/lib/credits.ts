@@ -16,16 +16,15 @@
  */
 
 import { supabase } from './supabase'
+import { getCreditCost } from './pricing'
+
+export { getCreditCost } from './pricing'
 
 export interface CreditResult {
   allowed: boolean
   balance: number
   cost: number
   reason?: string
-}
-
-export interface PricingTier {
-  [endpoint: string]: number
 }
 
 /** Free tier limits */
@@ -37,47 +36,6 @@ export const FREE_TIER = {
   /** Rate limit: requests per 60s */
   rateLimit: 100,
 } as const
-
-const PRICING: PricingTier = {
-  'POST /api/memory': 1,
-  'GET /api/memory': 1,
-  'POST /api/memory/search': 2,
-  'PATCH /api/memory': 1,
-  'DELETE /api/memory': 0,
-  'POST /api/memory/summarize': 5,
-  'POST /api/state': 0,
-  'GET /api/state': 0,
-  'DELETE /api/state': 0,
-  'POST /api/webhooks': 0,
-  'GET /api/webhooks': 0,
-  'PATCH /api/webhooks': 0,
-  'DELETE /api/webhooks': 0,
-  'POST /api/memory/:id/share': 0,
-  'GET /api/memory/:id/share': 0,
-  'DELETE /api/memory/:id/share': 0,
-  'GET /api/shared-with-me': 0,
-  'POST /api/admin/keys': 0,
-  'GET /api/admin/keys': 0,
-}
-
-/**
- * Get the credit cost for a given endpoint.
- * Matches by prefix — e.g. 'POST /api/memory' matches both
- * the base route and parameterized routes like '/api/memory/:id'.
- */
-export function getCreditCost(method: string, pathname: string): number {
-  const key = `${method} ${pathname}`
-  
-  // Exact match first
-  if (PRICING[key] !== undefined) return PRICING[key]
-  
-  // Prefix match for parameterized routes
-  for (const [pattern, cost] of Object.entries(PRICING)) {
-    if (key.startsWith(pattern.split(':')[0])) return cost
-  }
-  
-  return 1 // Default: 1 credit
-}
 
 /**
  * Check if a tenant has enough credits for an operation.
@@ -97,13 +55,8 @@ export async function checkCredits(tenantId: string, method: string, pathname: s
     .single()
 
   if (error || !data) {
-    // No balance row — create one with free credits
-    await supabase.from('credit_balances').insert({
-      tenant_id: tenantId,
-      balance: FREE_TIER.signupCredits,
-      total_purchased: FREE_TIER.signupCredits,
-    })
-    return { allowed: true, balance: FREE_TIER.signupCredits, cost }
+    // No balance row — the tenant has no credits. Do not self-grant.
+    return { allowed: false, balance: 0, cost }
   }
 
   return {
