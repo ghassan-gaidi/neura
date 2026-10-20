@@ -70,12 +70,21 @@ test('the empty branch returns before credit deduction (unchanged charging behav
 
 test('OpenAPI summarize 200 response schema lists all four fields', () => {
   const yaml = readFileSync(openApiPath, 'utf8')
-  // Within /api/memory/summarize responses -> 200 -> schema properties
-  const block = yaml.slice(yaml.indexOf('/api/memory/summarize'))
-  assert.match(yaml, /summary_type\s*:\s*\n\s*type:\s*string/)
-  assert.match(yaml, /memory_ids\s*:\s*\n\s*type:\s*array/)
-  assert.match(yaml, /total_memories\s*:\s*\n\s*type:\s*integer/)
-  assert.match(yaml, /summary\s*:\s*\n\s*type:\s*string/)
+  // Scope to the /api/memory/summarize path block, then to the 200 response schema only.
+  const pathStart = yaml.indexOf('  /api/memory/summarize:')
+  assert.notStrictEqual(pathStart, -1, 'OpenAPI spec must contain /api/memory/summarize')
+  const rest = yaml.slice(pathStart + 1)
+  const nextPath = rest.search(/\n  \/\S/)
+  const pathBlock = nextPath === -1 ? yaml.slice(pathStart) : yaml.slice(pathStart, pathStart + 1 + nextPath)
+  const resp200 = pathBlock.indexOf('"200":')
+  assert.notStrictEqual(resp200, -1, 'summarize must declare a 200 response')
+  const respRest = pathBlock.slice(resp200 + 1)
+  const nextResp = respRest.search(/\n {8}"\d{3}":/)
+  const responseBlock = nextResp === -1 ? pathBlock.slice(resp200) : pathBlock.slice(resp200, resp200 + 1 + nextResp)
+  assert.match(responseBlock, /summary:\s*\n\s+type:\s*string/, 'response schema missing summary')
+  assert.match(responseBlock, /total_memories:\s*\n\s+type:\s*integer/, 'response schema missing total_memories')
+  assert.match(responseBlock, /summary_type:\s*\n\s+type:\s*string/, 'response schema missing summary_type')
+  assert.match(responseBlock, /memory_ids:\s*\n\s+type:\s*array/, 'response schema missing memory_ids')
 })
 
 test('SDK SummarizeResult declares all four fields with correct summary_type union', () => {

@@ -21,3 +21,11 @@ test('the TypeScript SDK sends memory_ids when no query is given', () => {
 test('the Python SDK sends memory_ids when no query is given', () => {
   assert.match(pyMemory, /memory_ids/)
 })
+
+test('the Python SDK docstring documents new fields and excludes memory_count', () => {
+  assert.doesNotMatch(pyMemory, /memory_count/, 'docstring must not advertise memory_count')
+  assert.match(pyMemory, /"summary": str/, 'docstring must mention summary')
+  assert.match(pyMemory, /"total_memories": int/, 'docstring must mention total_memories')
+  assert.match(pyMemory, /"summary_type": str/, 'docstring must mention summary_type')
+  assert.match(pyMemory, /"memory_ids": list/, 'docstring must mention memory_ids')
+})
