@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { resolveApiKey } from '@/lib/auth'
 import { generateEmbedding } from '@/lib/embeddings'
-import { checkRateLimit } from '@/lib/middleware'
+import { checkRateLimit, withIdempotency } from '@/lib/middleware'
 import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 import { fireWebhook } from '@/lib/webhooks'
@@ -30,101 +30,103 @@ export async function POST(request: NextRequest) {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
-    if (!rl.allowed) {
-      return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
-    }
-
-    const body = await request.json().catch(() => ({}))
-    if (!body.memories || !Array.isArray(body.memories) || body.memories.length === 0) {
-      return respondError('validation_error', 'memories must be a non-empty array', 400)
-    }
-
-    if (body.memories.length > MAX_BATCH_CREATE) {
-      return respondError('validation_error', `Max ${MAX_BATCH_CREATE} memories per batch`, 400)
-    }
-
-    // Validate all memories
-    for (let i = 0; i < body.memories.length; i++) {
-      const m = body.memories[i]
-      if (!m.content || typeof m.content !== 'string') {
-        return respondError('validation_error', `memories[${i}].content is required and must be a string`, 400)
+    return await withIdempotency(async (req: NextRequest, auth: AuthContext) => {
+      const rl = checkRateLimit(auth.apiKeyId)
+      if (!rl.allowed) {
+        return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
       }
-    }
 
-    // Free tier limit — count the whole batch against the cap
-    const limit = await checkMemoryLimit(auth.tenantId)
-    const remainingSlots = limit.limit === -1 ? Infinity : Math.max(0, limit.limit - limit.current)
-    if (body.memories.length > remainingSlots) {
-      return respondError(
-        'free_tier_limit',
-        limit.limit === -1
-          ? 'Memory limit reached'
-          : `Free tier allows ${limit.limit} memories; ${remainingSlots} slot(s) remain.`,
-        403,
-        { action: 'upgrade_plan' }
-      )
-    }
-
-    // Credits check — 1 credit per memory in the batch
-    const totalCost = batchCost(body.memories.length)
-    const creditCheck = await checkCredits(auth.tenantId, 'POST', '/api/memory/batch')
-    if (!creditCheck.allowed || creditCheck.balance < totalCost) {
-      const x402 = buildX402Response(auth.tenantId, totalCost)
-      return NextResponse.json(
-        { error: x402 },
-        { status: 402, headers: { 'X-Credits-Balance': String(creditCheck.balance || 0), 'X-Credits-Needed': String(totalCost) } }
-      )
-    }
-
-    // Generate embeddings in parallel
-    const embeddingResults = await Promise.allSettled(
-      body.memories.map((m: any) => generateEmbedding(m.content))
-    )
-
-    const rows = body.memories.map((m: any, i: number) => {
-      const emb = embeddingResults[i]
-      return {
-        tenant_id: auth.tenantId,
-        content: m.content,
-        embedding: emb.status === 'fulfilled' ? `[${emb.value.join(',')}]` : null,
-        metadata: m.metadata || {},
-        tags: m.tags || [],
-        importance: m.importance ?? 0,
-        expires_at: m.expires_at || null,
+      const body = await req.json().catch(() => ({}))
+      if (!body.memories || !Array.isArray(body.memories) || body.memories.length === 0) {
+        return respondError('validation_error', 'memories must be a non-empty array', 400)
       }
-    })
 
-    const { data, error } = await supabase
-      .from('memories')
-      .insert(rows)
-      .select('id, content, metadata, tags, importance, expires_at, created_at, updated_at')
+      if (body.memories.length > MAX_BATCH_CREATE) {
+        return respondError('validation_error', `Max ${MAX_BATCH_CREATE} memories per batch`, 400)
+      }
 
-    if (error) {
-      return respondError('internal_error', 'Failed to store memories: ' + error.message, 500)
-    }
+      // Validate all memories
+      for (let i = 0; i < body.memories.length; i++) {
+        const m = body.memories[i]
+        if (!m.content || typeof m.content !== 'string') {
+          return respondError('validation_error', `memories[${i}].content is required and must be a string`, 400)
+        }
+      }
 
-    logUsage(auth, 'POST /api/memory/batch')
+      // Free tier limit — count the whole batch against the cap
+      const limit = await checkMemoryLimit(auth.tenantId)
+      const remainingSlots = limit.limit === -1 ? Infinity : Math.max(0, limit.limit - limit.current)
+      if (body.memories.length > remainingSlots) {
+        return respondError(
+          'free_tier_limit',
+          limit.limit === -1
+            ? 'Memory limit reached'
+            : `Free tier allows ${limit.limit} memories; ${remainingSlots} slot(s) remain.`,
+          403,
+          { action: 'upgrade_plan' }
+        )
+      }
 
-    // Fire webhooks for each memory
-    for (const mem of data || []) {
-      fireWebhook(auth.tenantId, 'memory.created', {
-        memory_id: mem.id,
-        content_preview: mem.content.slice(0, 200),
-        tags: mem.tags,
-        importance: mem.importance,
+      // Credits check — 1 credit per memory in the batch
+      const totalCost = batchCost(body.memories.length)
+      const creditCheck = await checkCredits(auth.tenantId, 'POST', '/api/memory/batch')
+      if (!creditCheck.allowed || creditCheck.balance < totalCost) {
+        const x402 = buildX402Response(auth.tenantId, totalCost)
+        return NextResponse.json(
+          { error: x402 },
+          { status: 402, headers: { 'X-Credits-Balance': String(creditCheck.balance || 0), 'X-Credits-Needed': String(totalCost) } }
+        )
+      }
+
+      // Generate embeddings in parallel
+      const embeddingResults = await Promise.allSettled(
+        body.memories.map((m: any) => generateEmbedding(m.content))
+      )
+
+      const rows = body.memories.map((m: any, i: number) => {
+        const emb = embeddingResults[i]
+        return {
+          tenant_id: auth.tenantId,
+          content: m.content,
+          embedding: emb.status === 'fulfilled' ? `[${emb.value.join(',')}]` : null,
+          metadata: m.metadata || {},
+          tags: m.tags || [],
+          importance: m.importance ?? 0,
+          expires_at: m.expires_at || null,
+        }
       })
-    }
 
-    const newBalance = await deductCredits(
-      auth.tenantId,
-      'POST',
-      '/api/memory/batch',
-      `batch-${Date.now()}`,
-      totalCost,
-      `POST /api/memory/batch (${body.memories.length} memories)`
-    )
-    return respond({ stored: data?.length || 0, memories: data || [] }, 201, getUsageMeta(auth, newBalance ?? undefined))
+      const { data, error } = await supabase
+        .from('memories')
+        .insert(rows)
+        .select('id, content, metadata, tags, importance, expires_at, created_at, updated_at')
+
+      if (error) {
+        return respondError('internal_error', 'Failed to store memories: ' + error.message, 500)
+      }
+
+      logUsage(auth, 'POST /api/memory/batch')
+
+      // Fire webhooks for each memory
+      for (const mem of data || []) {
+        fireWebhook(auth.tenantId, 'memory.created', {
+          memory_id: mem.id,
+          content_preview: mem.content.slice(0, 200),
+          tags: mem.tags,
+          importance: mem.importance,
+        })
+      }
+
+      const newBalance = await deductCredits(
+        auth.tenantId,
+        'POST',
+        '/api/memory/batch',
+        `batch-${Date.now()}`,
+        totalCost,
+        `POST /api/memory/batch (${body.memories.length} memories)`
+      )
+      return respond({ stored: data?.length || 0, memories: data || [] }, 201, getUsageMeta(auth, newBalance ?? undefined))
+    })(request, auth)
   } catch (err: any) {
     console.error('POST /api/memory/batch error:', err)
     return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })

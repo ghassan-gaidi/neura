@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { resolveApiKey } from '@/lib/auth'
-import { checkRateLimit } from '@/lib/middleware'
+import { checkRateLimit, withIdempotency } from '@/lib/middleware'
 import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 import { fireWebhook } from '@/lib/webhooks'
+import { AuthContext } from '@/lib/types'
 
 /**
  * POST /api/memory/:id/share
@@ -19,61 +20,63 @@ export async function POST(
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
-    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
-
     const { id } = await params
     if (!id) return respondError('validation_error', 'Memory ID is required', 400)
 
-    // Verify the memory exists and belongs to this tenant
-    const { data: memory, error: memErr } = await supabase
-      .from('memories')
-      .select('id, content')
-      .eq('id', id)
-      .eq('tenant_id', auth.tenantId)
-      .single()
+    return await withIdempotency(async (req: NextRequest, auth: AuthContext) => {
+      const rl = checkRateLimit(auth.apiKeyId)
+      if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
 
-    if (memErr || !memory) {
-      return respondError('not_found', 'Memory not found', 404)
-    }
+      // Verify the memory exists and belongs to this tenant
+      const { data: memory, error: memErr } = await supabase
+        .from('memories')
+        .select('id, content')
+        .eq('id', id)
+        .eq('tenant_id', auth.tenantId)
+        .single()
 
-    const body = await request.json().catch(() => ({}))
-    if (!body.target_tenant_id) {
-      return respondError('validation_error', 'target_tenant_id is required', 400)
-    }
+      if (memErr || !memory) {
+        return respondError('not_found', 'Memory not found', 404)
+      }
 
-    const permission = body.permission || 'read'
-    if (!['read', 'write'].includes(permission)) {
-      return respondError('validation_error', 'permission must be "read" or "write"', 400)
-    }
+      const body = await req.json().catch(() => ({}))
+      if (!body.target_tenant_id) {
+        return respondError('validation_error', 'target_tenant_id is required', 400)
+      }
 
-    const { data, error } = await supabase
-      .from('shared_memories')
-      .upsert(
-        {
-          memory_id: id,
-          owner_tenant_id: auth.tenantId,
-          target_tenant_id: body.target_tenant_id,
-          permission,
-        },
-        { onConflict: 'memory_id, target_tenant_id', ignoreDuplicates: false }
-      )
-      .select('id, memory_id, target_tenant_id, permission, created_at')
-      .single()
+      const permission = body.permission || 'read'
+      if (!['read', 'write'].includes(permission)) {
+        return respondError('validation_error', 'permission must be "read" or "write"', 400)
+      }
 
-    if (error) {
-      return respondError('internal_error', 'Failed to share memory: ' + error.message, 500)
-    }
+      const { data, error } = await supabase
+        .from('shared_memories')
+        .upsert(
+          {
+            memory_id: id,
+            owner_tenant_id: auth.tenantId,
+            target_tenant_id: body.target_tenant_id,
+            permission,
+          },
+          { onConflict: 'memory_id, target_tenant_id', ignoreDuplicates: false }
+        )
+        .select('id, memory_id, target_tenant_id, permission, created_at')
+        .single()
 
-    // Fire webhook
-    fireWebhook(auth.tenantId, 'memory.shared', {
-      memory_id: id,
-      shared_with: body.target_tenant_id,
-      permission,
-    })
+      if (error) {
+        return respondError('internal_error', 'Failed to share memory: ' + error.message, 500)
+      }
 
-    logUsage(auth, 'POST /api/memory/:id/share')
-    return respond(data, 201)
+      // Fire webhook
+      fireWebhook(auth.tenantId, 'memory.shared', {
+        memory_id: id,
+        shared_with: body.target_tenant_id,
+        permission,
+      })
+
+      logUsage(auth, 'POST /api/memory/:id/share')
+      return respond(data, 201)
+    })(request, auth)
   } catch (err: any) {
     console.error('POST /api/memory/:id/share error:', err)
     return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
