@@ -2,8 +2,8 @@
  * Quick smoke test of the Neura API against the live Supabase project.
  * Tests: auth, memory CRUD, state CRUD, search.
  */
-const { createClient } = require('@supabase/supabase-js')
-const crypto = require('crypto')
+import { createClient } from '@supabase/supabase-js'
+import crypto from 'crypto'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
