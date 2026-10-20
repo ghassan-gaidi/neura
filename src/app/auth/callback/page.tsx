@@ -37,9 +37,10 @@ export default function AuthCallbackPage() {
       const apiKey = result.data?.raw_key || result.data?.api_key
 
       if (apiKey) {
-        // Store in localStorage and redirect to dashboard with key
+        // Store the API key locally; redirect without the key in the URL so it
+      // never appears in browser history, referrers, or server logs.
         localStorage.setItem('neura_api_key', apiKey)
-        router.push('/dashboard?key=' + encodeURIComponent(apiKey))
+        router.push('/dashboard')
       } else {
         // Key not found — redirect to dashboard for manual entry
         router.push('/dashboard')
