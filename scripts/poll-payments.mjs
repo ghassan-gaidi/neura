@@ -9,6 +9,8 @@
  * Requires: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY env vars
  */
 
+import { createClient } from '@supabase/supabase-js'
+
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const WALLET = (process.env.PAYMENT_WALLET_ADDRESS || '0x29021dd5306D7b3b6608a2bc8276D33c1200C7Ef').toLowerCase()
@@ -21,7 +23,6 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
   process.exit(1)
 }
 
-const { createClient } = require('@supabase/supabase-js')
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
 
 async function rpcCall(method, params) {
