@@ -12,6 +12,7 @@ const WRITE_ROUTES = [
   'src/app/api/memory/[id]/route.ts',
   'src/app/api/memory/[id]/share/route.ts',
   'src/app/api/state/route.ts',
+  'src/app/api/state/[key]/route.ts',
 ]
 
 test('every write route wraps its handler in withIdempotency', () => {

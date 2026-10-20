@@ -5,7 +5,7 @@ import { checkRateLimit, withIdempotency } from '@/lib/middleware'
 import { respond, respondError } from '@/lib/response'
 import { AuthContext } from '@/lib/types'
 import { fireWebhook } from '@/lib/webhooks'
-import { checkCredits, deductCredits, buildX402Response } from '@/lib/credits'
+import { checkCredits, deductCredits, buildX402Response, fireCreditsLowIfLow } from '@/lib/credits'
 import { NextResponse } from 'next/server'
 
 /**
@@ -122,6 +122,7 @@ export async function PATCH(
       }
 
       const nbPatch = await deductCredits(auth.tenantId, 'PATCH', '/api/memory', data.id)
+      fireCreditsLowIfLow(auth.tenantId, nbPatch)
       fireWebhook(auth.tenantId, 'memory.updated', {
         memory_id: data.id,
         content_preview: (data.content || '').slice(0, 200),

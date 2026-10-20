@@ -6,7 +6,7 @@ import { checkRateLimit, withIdempotency } from '@/lib/middleware'
 import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 import { fireWebhook } from '@/lib/webhooks'
-import { checkCredits, deductCredits, buildX402Response, checkMemoryLimit } from '@/lib/credits'
+import { checkCredits, deductCredits, buildX402Response, checkMemoryLimit, fireCreditsLowIfLow } from '@/lib/credits'
 import { batchCost } from '@/lib/pricing'
 import { AuthContext } from '@/lib/types'
 
@@ -125,6 +125,7 @@ export async function POST(request: NextRequest) {
         totalCost,
         `POST /api/memory/batch (${body.memories.length} memories)`
       )
+      fireCreditsLowIfLow(auth.tenantId, newBalance)
       return respond({ stored: data?.length || 0, memories: data || [] }, 201, getUsageMeta(auth, newBalance ?? undefined))
     })(request, auth)
   } catch (err: any) {

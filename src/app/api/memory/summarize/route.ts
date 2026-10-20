@@ -4,7 +4,7 @@ import { resolveApiKey } from '@/lib/auth'
 import { checkRateLimit } from '@/lib/middleware'
 import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
-import { checkCredits, deductCredits, buildX402Response } from '@/lib/credits'
+import { checkCredits, deductCredits, buildX402Response, fireCreditsLowIfLow } from '@/lib/credits'
 
 /**
  * POST /api/memory/summarize
@@ -126,6 +126,7 @@ export async function POST(request: NextRequest) {
 
     logUsage(auth, 'POST /api/memory/summarize')
     const nbSummary = await deductCredits(auth.tenantId, 'POST', '/api/memory/summarize')
+    fireCreditsLowIfLow(auth.tenantId, nbSummary)
     return respond({
       summary,
       total_memories: memories.length,

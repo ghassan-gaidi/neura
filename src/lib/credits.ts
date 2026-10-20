@@ -144,6 +144,29 @@ export async function getBalance(tenantId: string): Promise<number> {
 }
 
 /**
+ * Fire the `credits.low` webhook if the balance has fallen to or below
+ * the threshold. No-op when the balance is still healthy, or when the
+ * balance is unknown (null/undefined).
+ */
+export async function fireCreditsLowIfLow(
+  tenantId: string,
+  balance: number | null | undefined
+): Promise<void> {
+  if (balance === null || balance === undefined) return
+  if (balance > CREDITS_LOW_THRESHOLD) return
+
+  try {
+    const { fireWebhook } = await import('./webhooks')
+    fireWebhook(tenantId, 'credits.low', {
+      balance,
+      threshold: CREDITS_LOW_THRESHOLD,
+    })
+  } catch (err: any) {
+    console.error('Failed to fire credits.low webhook:', err?.message || err)
+  }
+}
+
+/**
  * x402 payment configuration.
  * When credits are exhausted, return 402 with these details.
  */

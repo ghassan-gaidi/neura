@@ -7,7 +7,7 @@ import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 import { CreateMemoryRequest, AuthContext } from '@/lib/types'
 import { fireWebhook } from '@/lib/webhooks'
-import { checkCredits, deductCredits, buildX402Response, checkMemoryLimit, CREDITS_LOW_THRESHOLD } from '@/lib/credits'
+import { checkCredits, deductCredits, buildX402Response, checkMemoryLimit, fireCreditsLowIfLow } from '@/lib/credits'
 
 function getUsageMeta(auth: AuthContext, balance?: number) {
   return balance !== undefined
@@ -105,12 +105,7 @@ export async function POST(request: NextRequest) {
       })
       // Deduct credits
       const newBalance = await deductCredits(auth.tenantId, 'POST', '/api/memory', data.id)
-      if (newBalance !== null && newBalance !== undefined && newBalance <= CREDITS_LOW_THRESHOLD) {
-        fireWebhook(auth.tenantId, 'credits.low', {
-          balance: newBalance,
-          threshold: CREDITS_LOW_THRESHOLD,
-        })
-      }
+      fireCreditsLowIfLow(auth.tenantId, newBalance)
       return respond(data, 201, getUsageMeta(auth, newBalance ?? undefined))
     })(request, auth)
   } catch (err: any) {
@@ -210,6 +205,7 @@ export async function GET(request: NextRequest) {
 
     logUsage(auth, 'GET /api/memory')
     const newBalance = await deductCredits(auth.tenantId, 'GET', '/api/memory')
+    fireCreditsLowIfLow(auth.tenantId, newBalance)
     return respond(results, 200, { total: results.length, query, ...getUsageMeta(auth, newBalance ?? undefined) })
   } catch (err: any) {
     console.error('GET /api/memory error:', err)

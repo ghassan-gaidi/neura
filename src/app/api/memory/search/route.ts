@@ -6,7 +6,7 @@ import { checkRateLimit } from '@/lib/middleware'
 import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 import { SearchMemoryRequest } from '@/lib/types'
-import { checkCredits, deductCredits, buildX402Response } from '@/lib/credits'
+import { checkCredits, deductCredits, buildX402Response, fireCreditsLowIfLow } from '@/lib/credits'
 
 /**
  * POST /api/memory/search
@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
 
       logUsage(auth, 'POST /api/memory/search')
       const nb1 = await deductCredits(auth.tenantId, 'POST', '/api/memory/search')
+      fireCreditsLowIfLow(auth.tenantId, nb1)
       return respond(results, 200, { total: results.length, query: body.query, credits_remaining: nb1 ?? undefined })
     }
 
@@ -107,6 +108,7 @@ export async function POST(request: NextRequest) {
 
     logUsage(auth, 'POST /api/memory/search')
     const nb2 = await deductCredits(auth.tenantId, 'POST', '/api/memory/search')
+    fireCreditsLowIfLow(auth.tenantId, nb2)
     return respond(data || [], 200, { total: data?.length || 0, credits_remaining: nb2 ?? undefined })
   } catch (err: any) {
     console.error('POST /api/memory/search error:', err)
