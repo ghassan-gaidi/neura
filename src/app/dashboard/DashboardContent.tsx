@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 
 type Memory = { id: string; content: string; tags: string[]; importance: number; created_at: string }
@@ -23,7 +23,6 @@ function StatBox({ label, value }: { label: string; value: number }) {
 
 export default function DashboardContent() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [apiKey, setApiKey] = useState('')
   const [authenticated, setAuthenticated] = useState(false)
   const [authLoading, setAuthLoading] = useState(false)
@@ -48,14 +47,6 @@ export default function DashboardContent() {
   // Auto-detect Supabase Auth session on mount
   useEffect(() => {
     const initAuth = async () => {
-      // Check for key in URL params first (from auth callback)
-      const urlKey = searchParams.get('key')
-      if (urlKey) {
-        setApiKey(urlKey)
-        localStorage.setItem('neura_api_key', urlKey)
-        return
-      }
-
       // Check localStorage
       const storedKey = localStorage.getItem('neura_api_key')
       if (storedKey) {
@@ -84,7 +75,7 @@ export default function DashboardContent() {
       }
     }
     initAuth()
-  }, [searchParams])
+  }, [])
 
   const apiFetch = useCallback(async (path: string, options?: RequestInit) => {
     const res = await fetch(path, {

@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
  * Body: { payment_tx?: string, amount_usdc?: string, credits?: number }
  * 
  * For testing: send { test_top_up: true, credits: 1000 } to add free credits.
+ * This is disabled unless the ALLOW_TEST_TOP_UP environment variable is set to 'true'.
  */
 export async function POST(request: NextRequest) {
   try {
