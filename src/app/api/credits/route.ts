@@ -5,7 +5,7 @@ import { checkRateLimit } from '@/lib/middleware'
 import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 import { getBalance, X402_CONFIG } from '@/lib/credits'
-import { isTestTopUpAllowed } from '@/lib/pricing'
+import { isTestTopUpAllowed, PRICING } from '@/lib/pricing'
 
 /**
  * GET /api/credits
@@ -25,16 +25,15 @@ export async function GET(request: NextRequest) {
     return respond({
       balance,
       pricing: {
-        'POST /api/memory': 1,
-        'GET /api/memory': 1,
-        'POST /api/memory/search': 2,
-        'POST /api/memory/summarize': 5,
+        ...PRICING,
         'state_operations': 'free',
         'webhooks': 'free',
       },
       top_up: {
         via: X402_CONFIG,
-        url: '/api/credits/top-up',
+        url: '/api/credits',
+        method: 'POST',
+        body: { payment_tx: '<base tx hash>', amount_usdc: '<amount>' },
       },
     }, 200)
   } catch (err: any) {
@@ -120,10 +119,11 @@ export async function POST(request: NextRequest) {
     const currentBalance = balance?.balance ?? 1000
     const newBalance = currentBalance + creditsToAdd
 
+    // Add credits. Only touch `balance` — `total_purchased` and
+    // `total_consumed` must reflect lifetime history, not the current balance.
     await supabase.from('credit_balances').upsert({
       tenant_id: auth.tenantId,
       balance: newBalance,
-      total_purchased: currentBalance, // Preserve total purchased
     }, { onConflict: 'tenant_id' })
 
     // Record transaction
