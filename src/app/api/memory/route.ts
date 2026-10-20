@@ -7,7 +7,7 @@ import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 import { CreateMemoryRequest, AuthContext } from '@/lib/types'
 import { fireWebhook } from '@/lib/webhooks'
-import { checkCredits, deductCredits, buildX402Response } from '@/lib/credits'
+import { checkCredits, deductCredits, buildX402Response, checkMemoryLimit } from '@/lib/credits'
 
 function getUsageMeta(auth: AuthContext, balance?: number) {
   return balance !== undefined
@@ -37,6 +37,17 @@ export async function POST(request: NextRequest) {
           action: 'wait_and_retry',
           retry_after: Math.ceil(rl.resetMs / 1000),
         })
+      }
+
+      // Free tier limit — 100 memories for the free plan
+      const limit = await checkMemoryLimit(auth.tenantId)
+      if (!limit.allowed) {
+        return respondError(
+          'free_tier_limit',
+          `Free tier allows ${limit.limit} memories. Upgrade to add more.`,
+          403,
+          { action: 'upgrade_plan' }
+        )
       }
 
       // Credits check

@@ -6,7 +6,7 @@ import { checkRateLimit } from '@/lib/middleware'
 import { respond, respondError } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 import { fireWebhook } from '@/lib/webhooks'
-import { checkCredits, deductCredits, buildX402Response } from '@/lib/credits'
+import { checkCredits, deductCredits, buildX402Response, checkMemoryLimit } from '@/lib/credits'
 import { batchCost } from '@/lib/pricing'
 import { AuthContext } from '@/lib/types'
 
@@ -50,6 +50,20 @@ export async function POST(request: NextRequest) {
       if (!m.content || typeof m.content !== 'string') {
         return respondError('validation_error', `memories[${i}].content is required and must be a string`, 400)
       }
+    }
+
+    // Free tier limit — count the whole batch against the cap
+    const limit = await checkMemoryLimit(auth.tenantId)
+    const remainingSlots = limit.limit === -1 ? Infinity : Math.max(0, limit.limit - limit.current)
+    if (body.memories.length > remainingSlots) {
+      return respondError(
+        'free_tier_limit',
+        limit.limit === -1
+          ? 'Memory limit reached'
+          : `Free tier allows ${limit.limit} memories; ${remainingSlots} slot(s) remain.`,
+        403,
+        { action: 'upgrade_plan' }
+      )
     }
 
     // Credits check — 1 credit per memory in the batch
