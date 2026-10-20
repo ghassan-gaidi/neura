@@ -67,8 +67,8 @@ export class MemoryAPI {
   }
 
   /** Share a memory with another tenant. */
-  async share(id: string, tenantId: string, permission: 'read' | 'write' = 'read'): Promise<void> {
-    await this.client.request('POST', `/api/memory/${id}/share`, { tenant_id: tenantId, permission })
+  async share(id: string, targetTenantId: string, permission: 'read' | 'write' = 'read'): Promise<void> {
+    await this.client.request('POST', `/api/memory/${id}/share`, { target_tenant_id: targetTenantId, permission })
   }
 
   /** List memories shared with this tenant by other agents. */

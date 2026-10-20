@@ -284,8 +284,8 @@ var MemoryAPI = class {
     return data;
   }
   /** Share a memory with another tenant. */
-  async share(id, tenantId, permission = "read") {
-    await this.client.request("POST", `/api/memory/${id}/share`, { tenant_id: tenantId, permission });
+  async share(id, targetTenantId, permission = "read") {
+    await this.client.request("POST", `/api/memory/${id}/share`, { target_tenant_id: targetTenantId, permission });
   }
   /** List memories shared with this tenant by other agents. */
   async sharedWithMe() {

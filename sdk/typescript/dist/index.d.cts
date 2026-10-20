@@ -223,7 +223,7 @@ declare class MemoryAPI {
     /** Summarize recent memories via LLM. Costs 5 credits. */
     summarize(limit?: number, query?: string): Promise<SummarizeResult>;
     /** Share a memory with another tenant. */
-    share(id: string, tenantId: string, permission?: 'read' | 'write'): Promise<void>;
+    share(id: string, targetTenantId: string, permission?: 'read' | 'write'): Promise<void>;
     /** List memories shared with this tenant by other agents. */
     sharedWithMe(): Promise<Memory[]>;
 }

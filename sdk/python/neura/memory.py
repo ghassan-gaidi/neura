@@ -104,13 +104,13 @@ class MemoryAPI:
         return result["data"]
 
     def share(
-        self, memory_id: str, tenant_id: str, permission: str = "read"
+        self, memory_id: str, target_tenant_id: str, permission: str = "read"
     ) -> None:
         """Share a memory with another tenant."""
         self._client.request(
             "POST",
             f"/api/memory/{memory_id}/share",
-            {"tenant_id": tenant_id, "permission": permission},
+            {"target_tenant_id": target_tenant_id, "permission": permission},
         )
 
     def shared_with_me(self) -> list[dict]:

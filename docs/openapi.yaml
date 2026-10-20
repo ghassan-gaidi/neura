@@ -398,9 +398,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [tenant_id]
+              required: [target_tenant_id]
               properties:
-                tenant_id:
+                target_tenant_id:
                   type: string
                   format: uuid
                 permission:
@@ -408,7 +408,7 @@ paths:
                   enum: [read, write]
                   default: read
       responses:
-        "200":
+        "201":
           description: Memory shared
         "400":
           $ref: "#/components/responses/ValidationError"
