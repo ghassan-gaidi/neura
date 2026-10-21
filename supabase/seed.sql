@@ -1,0 +1,2 @@
+-- Intentionally empty. Seed data for local development goes here.
+-- Never put production data in this file.
