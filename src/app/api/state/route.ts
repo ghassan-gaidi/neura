@@ -13,24 +13,25 @@ import { UpsertStateRequest, AuthContext } from '@/lib/types'
  * Body: { key, value }
  */
 export async function POST(request: NextRequest) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
     return await withIdempotency(async (req: NextRequest, auth: AuthContext) => {
-      const rl = checkRateLimit(auth.apiKeyId)
+      rl = checkRateLimit(auth.apiKeyId)
       if (!rl.allowed) {
         return respondError('rate_limited', 'Rate limit exceeded', 429, {
           retry_after: Math.ceil(rl.resetMs / 1000),
-        })
+        }, rl)
       }
 
       const body: UpsertStateRequest = await req.json().catch(() => ({}))
       if (!body.key || typeof body.key !== 'string') {
-        return respondError('validation_error', 'key is required and must be a string', 400)
+        return respondError('validation_error', 'key is required and must be a string', 400, undefined, rl)
       }
       if (body.value === undefined) {
-        return respondError('validation_error', 'value is required', 400)
+        return respondError('validation_error', 'value is required', 400, undefined, rl)
       }
 
       const { data, error } = await supabase
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (error) {
-        return respondError('internal_error', 'State update failed: ' + error.message, 500)
+        return respondError('internal_error', 'State update failed: ' + error.message, 500, undefined, rl)
       }
 
       logUsage(auth, 'POST /api/state')
@@ -51,11 +52,11 @@ export async function POST(request: NextRequest) {
         key: body.key,
         value: body.value,
       })
-      return respond(data, 201)
+      return respond(data, 201, undefined, rl)
     })(request, auth)
   } catch (err: any) {
     console.error('POST /api/state error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }
 
@@ -64,15 +65,16 @@ export async function POST(request: NextRequest) {
  * Retrieve all state keys for this tenant.
  */
 export async function GET(request: NextRequest) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
+    rl = checkRateLimit(auth.apiKeyId)
     if (!rl.allowed) {
       return respondError('rate_limited', 'Rate limit exceeded', 429, {
         retry_after: Math.ceil(rl.resetMs / 1000),
-      })
+      }, rl)
     }
 
     const { data, error } = await supabase
@@ -82,13 +84,13 @@ export async function GET(request: NextRequest) {
       .order('key', { ascending: true })
 
     if (error) {
-      return respondError('internal_error', 'Failed to fetch state: ' + error.message, 500)
+      return respondError('internal_error', 'Failed to fetch state: ' + error.message, 500, undefined, rl)
     }
 
     logUsage(auth, 'GET /api/state')
-    return respond(data || [], 200, { total: data?.length || 0 })
+    return respond(data || [], 200, { total: data?.length || 0 }, rl)
   } catch (err: any) {
     console.error('GET /api/state error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }

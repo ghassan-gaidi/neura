@@ -15,12 +15,13 @@ import { checkCredits, deductCredits, buildX402Response, fireCreditsLowIfLow } f
  * or create concise summaries of what was learned.
  */
 export async function POST(request: NextRequest) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
-    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
+    rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
 
     // Credits check — 5 credits for summarization
     const creditCheck = await checkCredits(auth.tenantId, 'POST', '/api/memory/summarize')
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}))
     if (!body.memory_ids && !body.query) {
-      return respondError('validation_error', 'Provide memory_ids or a query to select memories', 400)
+      return respondError('validation_error', 'Provide memory_ids or a query to select memories', 400, undefined, rl)
     }
 
     // Fetch the memories to summarize
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
         .in('id', body.memory_ids)
         .order('created_at', { ascending: true })
 
-      if (error) return respondError('internal_error', 'Failed to fetch memories: ' + error.message, 500)
+      if (error) return respondError('internal_error', 'Failed to fetch memories: ' + error.message, 500, undefined, rl)
       memories = data || []
     } else if (body.query) {
       const { generateEmbedding } = await import('@/lib/embeddings')
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
         p_min_score: body.min_score || 0.0,
       })
 
-      if (error) return respondError('internal_error', 'Search failed: ' + error.message, 500)
+      if (error) return respondError('internal_error', 'Search failed: ' + error.message, 500, undefined, rl)
       memories = (data || []).map((r: any) => ({
         id: r.id,
         content: r.content,
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
     const summaryType = body.type || 'extractive'
 
     if (memories.length === 0) {
-      return respond({ summary: 'No memories found to summarize.', total_memories: 0, summary_type: summaryType, memory_ids: [] }, 200)
+      return respond({ summary: 'No memories found to summarize.', total_memories: 0, summary_type: summaryType, memory_ids: [] }, 200, undefined, rl)
     }
 
     // Build summary
@@ -92,7 +93,7 @@ export async function POST(request: NextRequest) {
       if (!apiKey) {
         return respondError('internal_error', 'OpenAI API key not configured for abstractive summaries', 500, {
           action: 'use_extractive_summary',
-        })
+        }, rl)
       }
 
       const content = memories.map((m) => `- ${m.content}`).join('\n')
@@ -118,7 +119,7 @@ export async function POST(request: NextRequest) {
 
       if (!response.ok) {
         const errText = await response.text()
-        return respondError('internal_error', 'AI summary failed: ' + errText, 500)
+        return respondError('internal_error', 'AI summary failed: ' + errText, 500, undefined, rl)
       }
 
       const result = await response.json()
@@ -133,9 +134,9 @@ export async function POST(request: NextRequest) {
       total_memories: memories.length,
       summary_type: summaryType,
       memory_ids: memories.map((m) => m.id),
-    }, 200, { credits_remaining: nbSummary ?? undefined })
+    }, 200, { credits_remaining: nbSummary ?? undefined }, rl)
   } catch (err: any) {
     console.error('POST /api/memory/summarize error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }

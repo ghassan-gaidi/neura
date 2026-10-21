@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { respond, respondError } from '@/lib/response'
+import { checkRateLimit } from '@/lib/middleware'
 import crypto from 'crypto'
 
 /**
@@ -10,6 +11,7 @@ import crypto from 'crypto'
  * On first access, automatically generates the user's initial API key.
  */
 export async function GET(request: NextRequest) {
+  let rl: ReturnType<typeof checkRateLimit> | undefined
   try {
     const authHeader = request.headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) {
@@ -24,6 +26,10 @@ export async function GET(request: NextRequest) {
     if (authError || !user) {
       return respondError('unauthorized', 'Invalid or expired token', 401)
     }
+
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+    rl = checkRateLimit(`user:${user.id}:${ip}`)
+    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
 
     // Get user profile + API key
     const { data: profile, error: profileError } = await supabase
@@ -42,7 +48,7 @@ export async function GET(request: NextRequest) {
         .insert({ id: user.id, email: user.email, tenant_id: tenantId })
 
       if (insertError) {
-        return respondError('internal_error', 'Failed to create profile: ' + insertError.message, 500)
+        return respondError('internal_error', 'Failed to create profile: ' + insertError.message, 500, undefined, rl)
       }
 
       // Create API key
@@ -56,7 +62,7 @@ export async function GET(request: NextRequest) {
         .single()
 
       if (keyInsertError) {
-        return respondError('internal_error', 'Failed to create API key: ' + keyInsertError.message, 500)
+        return respondError('internal_error', 'Failed to create API key: ' + keyInsertError.message, 500, undefined, rl)
       }
 
       // Seed 1000 free credits
@@ -73,7 +79,7 @@ export async function GET(request: NextRequest) {
         api_key: newKey,
         raw_key: newRawKey,
         credits: 1000,
-      })
+      }, 200, undefined, rl)
     }
 
     // Check if user already has an API key
@@ -104,7 +110,7 @@ export async function GET(request: NextRequest) {
         .single()
 
       if (insertError) {
-        return respondError('internal_error', 'Failed to create API key: ' + insertError.message, 500)
+        return respondError('internal_error', 'Failed to create API key: ' + insertError.message, 500, undefined, rl)
       }
 
       apiKey = newKey
@@ -127,9 +133,9 @@ export async function GET(request: NextRequest) {
       api_key: apiKey,
       raw_key: rawKey, // only set on first access, undefined on subsequent calls
       credits: credits?.balance || 0,
-    })
+    }, 200, undefined, rl)
   } catch (err: any) {
     console.error('GET /api/auth/me error:', err)
-    return respondError('internal_error', err.message, 500)
+    return respondError('internal_error', err.message, 500, undefined, rl)
   }
 }

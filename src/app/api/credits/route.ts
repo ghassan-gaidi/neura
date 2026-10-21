@@ -12,12 +12,13 @@ import { isTestTopUpAllowed, PRICING } from '@/lib/pricing'
  * Get current credit balance and pricing info.
  */
 export async function GET(request: NextRequest) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
-    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
+    rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
 
     const balance = await getBalance(auth.tenantId)
 
@@ -35,10 +36,10 @@ export async function GET(request: NextRequest) {
         method: 'POST',
         body: { payment_tx: '<base tx hash>', amount_usdc: '<amount>' },
       },
-    }, 200)
+    }, 200, undefined, rl)
   } catch (err: any) {
     console.error('GET /api/credits error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }
 
@@ -53,12 +54,13 @@ export async function GET(request: NextRequest) {
  * This is disabled unless the ALLOW_TEST_TOP_UP environment variable is set to 'true'.
  */
 export async function POST(request: NextRequest) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
-    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
+    rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
 
     const body = await request.json().catch(() => ({}))
 
@@ -67,12 +69,7 @@ export async function POST(request: NextRequest) {
 
     if (body.test_top_up) {
       if (!isTestTopUpAllowed()) {
-        return respondError(
-          'validation_error',
-          'test_top_up is disabled in production',
-          400,
-          { action: 'use_payment_tx' }
-        )
+        return respondError('validation_error', 'test_top_up is disabled in production', 400, { action: 'use_payment_tx' }, rl)
       }
       creditsToAdd = body.credits || 1000
     } else if (body.payment_tx) {
@@ -84,7 +81,7 @@ export async function POST(request: NextRequest) {
         return respondError('payment_required', `Payment not confirmed: ${verification.error}`, 402, {
           action: verification.error?.startsWith('waiting_for_confirmations') ? 'wait_and_retry' : 'check_transaction',
           retry_after: verification.error?.startsWith('waiting_for_confirmations') ? 30 : undefined,
-        })
+        }, rl)
       }
 
       // Redeem through the atomic function
@@ -102,11 +99,11 @@ export async function POST(request: NextRequest) {
         amount_usdc: verification.details!.amount,
         from: verification.details!.from,
         confirmations: verification.details!.confirmations,
-      }, 200)
+      }, 200, undefined, rl)
     }
 
     if (creditsToAdd <= 0) {
-      return respondError('validation_error', 'Invalid credit amount or missing payment', 400)
+      return respondError('validation_error', 'Invalid credit amount or missing payment', 400, undefined, rl)
     }
 
     // Add credits
@@ -141,9 +138,9 @@ export async function POST(request: NextRequest) {
       credits_added: creditsToAdd,
       balance: newBalance,
       payment_tx: body.payment_tx || null,
-    }, 200)
+    }, 200, undefined, rl)
   } catch (err: any) {
     console.error('POST /api/credits/top-up error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }

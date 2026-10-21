@@ -2,12 +2,14 @@
  * GET /api/payments/poll
  * Vercel Cron Job — checks for uncredited USDC transfers via Base RPC.
  * Runs every 5 minutes (configured in vercel.json).
- * 
+ *
  * Checks recent blocks for USDC Transfer events to our wallet.
  * No external API needed — direct chain access.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { checkRateLimit } from '@/lib/middleware'
+import { respondError } from '@/lib/response'
 
 const WALLET = (process.env.PAYMENT_WALLET_ADDRESS || '0x29021dd5306D7b3b6608a2bc8276D33c1200C7Ef').toLowerCase()
 const USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'.toLowerCase()
@@ -29,6 +31,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
 
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  const rl = checkRateLimit(`ip:${ip}`)
+  if (!rl.allowed) {
+    return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
+  }
+
   try {
     const currentBlockHex = await rpcCall('eth_blockNumber', [])
     const currentBlock = parseInt(currentBlockHex, 16)
@@ -44,7 +52,7 @@ export async function GET(request: NextRequest) {
     }])
 
     if (!logs || logs.length === 0) {
-      return NextResponse.json({
+      const response = NextResponse.json({
         ok: true,
         wallet: WALLET,
         current_block: currentBlock,
@@ -52,6 +60,10 @@ export async function GET(request: NextRequest) {
         new_uncredited: [],
         checked_at: new Date().toISOString(),
       })
+      response.headers.set('X-RateLimit-Limit', String(rl.limit))
+      response.headers.set('X-RateLimit-Remaining', String(rl.remaining))
+      response.headers.set('X-RateLimit-Reset', String(Math.ceil(rl.resetMs / 1000)))
+      return response
     }
 
     // Process each transfer, skip already-redeemed ones
@@ -85,7 +97,7 @@ export async function GET(request: NextRequest) {
         newTransfers.map(t => `${t.amount} USDC from ${t.from.slice(0,10)}...`).join(', '))
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       ok: true,
       wallet: WALLET,
       current_block: currentBlock,
@@ -93,9 +105,17 @@ export async function GET(request: NextRequest) {
       new_uncredited: newTransfers,
       checked_at: new Date().toISOString(),
     })
+    response.headers.set('X-RateLimit-Limit', String(rl.limit))
+    response.headers.set('X-RateLimit-Remaining', String(rl.remaining))
+    response.headers.set('X-RateLimit-Reset', String(Math.ceil(rl.resetMs / 1000)))
+    return response
   } catch (err: any) {
     console.error('[payment-poll] Error:', err.message)
-    return NextResponse.json({ ok: false, error: err.message })
+    const response = NextResponse.json({ ok: false, error: err.message }, { status: 500 })
+    response.headers.set('X-RateLimit-Limit', String(rl.limit))
+    response.headers.set('X-RateLimit-Remaining', String(rl.remaining))
+    response.headers.set('X-RateLimit-Reset', String(Math.ceil(rl.resetMs / 1000)))
+    return response
   }
 }
 

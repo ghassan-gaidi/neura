@@ -11,35 +11,36 @@ import { logUsage } from '@/lib/usage'
  * Body: { url, events, secret? }
  */
 export async function POST(request: NextRequest) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
-    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
+    rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
 
     const body = await request.json().catch(() => ({}))
     if (!body.url || typeof body.url !== 'string') {
-      return respondError('validation_error', 'url is required and must be a string', 400)
+      return respondError('validation_error', 'url is required and must be a string', 400, undefined, rl)
     }
     // Validate URL format and protocol
     let parsedUrl: URL
     try {
       parsedUrl = new URL(body.url)
     } catch {
-      return respondError('validation_error', 'url must be a valid URL', 400)
+      return respondError('validation_error', 'url must be a valid URL', 400, undefined, rl)
     }
     if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-      return respondError('validation_error', 'url must use http or https protocol', 400)
+      return respondError('validation_error', 'url must use http or https protocol', 400, undefined, rl)
     }
     if (!body.events || !Array.isArray(body.events) || body.events.length === 0) {
-      return respondError('validation_error', 'events must be a non-empty array', 400)
+      return respondError('validation_error', 'events must be a non-empty array', 400, undefined, rl)
     }
 
     const validEvents = ['memory.created', 'memory.updated', 'memory.deleted', 'memory.expiring', 'state.changed', 'memory.shared', 'credits.low']
     const invalid = body.events.filter((e: string) => !validEvents.includes(e))
     if (invalid.length > 0) {
-      return respondError('validation_error', `Invalid event(s): ${invalid.join(', ')}`, 400)
+      return respondError('validation_error', `Invalid event(s): ${invalid.join(', ')}`, 400, undefined, rl)
     }
 
     const { data, error } = await supabase
@@ -54,14 +55,14 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      return respondError('internal_error', 'Failed to register webhook: ' + error.message, 500)
+      return respondError('internal_error', 'Failed to register webhook: ' + error.message, 500, undefined, rl)
     }
 
     logUsage(auth, 'POST /api/webhooks')
-    return respond(data, 201)
+    return respond(data, 201, undefined, rl)
   } catch (err: any) {
     console.error('POST /api/webhooks error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }
 
@@ -70,12 +71,13 @@ export async function POST(request: NextRequest) {
  * List all registered webhooks for this tenant.
  */
 export async function GET(request: NextRequest) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
-    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
+    rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
 
     const { data, error } = await supabase
       .from('webhooks')
@@ -84,13 +86,13 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     if (error) {
-      return respondError('internal_error', 'Failed to list webhooks: ' + error.message, 500)
+      return respondError('internal_error', 'Failed to list webhooks: ' + error.message, 500, undefined, rl)
     }
 
     logUsage(auth, 'GET /api/webhooks')
-    return respond(data || [], 200)
+    return respond(data || [], 200, undefined, rl)
   } catch (err: any) {
     console.error('GET /api/webhooks error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }

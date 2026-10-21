@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { checkRateLimit } from '@/lib/middleware'
 
 const MIGRATE_KEY = process.env.NEURA_MIGRATE_KEY
 if (!MIGRATE_KEY) {
   console.warn('[migrate] NEURA_MIGRATE_KEY not set — endpoint disabled')
+}
+
+type RateLimit = ReturnType<typeof checkRateLimit>
+
+function withRateLimitHeaders(response: NextResponse, rl: RateLimit): NextResponse {
+  response.headers.set('X-RateLimit-Limit', String(rl.limit))
+  response.headers.set('X-RateLimit-Remaining', String(rl.remaining))
+  response.headers.set('X-RateLimit-Reset', String(Math.ceil(rl.resetMs / 1000)))
+  return response
 }
 
 export async function POST(req: NextRequest) {
@@ -16,22 +26,40 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  const rl = checkRateLimit(`ip:${ip}`)
+  if (!rl.allowed) {
+    return withRateLimitHeaders(
+      NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 }),
+      rl
+    )
+  }
+
   const body = await req.json().catch(() => ({}))
   const sql = body.sql || ''
 
   if (!sql || typeof sql !== 'string') {
-    return NextResponse.json({ error: 'sql field required' }, { status: 400 })
+    return withRateLimitHeaders(
+      NextResponse.json({ error: 'sql field required' }, { status: 400 }),
+      rl
+    )
   }
 
   // Block dangerous SQL patterns
   const blocked = /\b(DROP\s+DATABASE|TRUNCATE|pg_|COPY\s+.*FROM\s+PROGRAM)\b/i
   if (blocked.test(sql)) {
-    return NextResponse.json({ error: 'blocked SQL pattern' }, { status: 400 })
+    return withRateLimitHeaders(
+      NextResponse.json({ error: 'blocked SQL pattern' }, { status: 400 }),
+      rl
+    )
   }
 
   const DB_PASSWORD = process.env.SUPABASE_DB_PASSWORD || ''
   if (!DB_PASSWORD) {
-    return NextResponse.json({ error: 'SUPABASE_DB_PASSWORD not configured' }, { status: 500 })
+    return withRateLimitHeaders(
+      NextResponse.json({ error: 'SUPABASE_DB_PASSWORD not configured' }, { status: 500 }),
+      rl
+    )
   }
 
   try {
@@ -45,9 +73,15 @@ export async function POST(req: NextRequest) {
     })
     await pool.query(sql)
     await pool.end()
-    return NextResponse.json({ success: true })
+    return withRateLimitHeaders(
+      NextResponse.json({ success: true }),
+      rl
+    )
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    return withRateLimitHeaders(
+      NextResponse.json({ error: err.message }, { status: 500 }),
+      rl
+    )
   }
 }
 

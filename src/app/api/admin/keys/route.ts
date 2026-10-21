@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { resolveApiKey } from '@/lib/auth'
 import { respond, respondError } from '@/lib/response'
+import { checkRateLimit } from '@/lib/middleware'
 import crypto from 'crypto'
 
 /**
@@ -11,9 +12,13 @@ import crypto from 'crypto'
  * Returns the raw key once (it won't be shown again).
  */
 export async function POST(request: NextRequest) {
+  let rl: ReturnType<typeof checkRateLimit> | undefined
   try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
+
+    rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
 
     const body = await request.json().catch(() => ({}))
     const label = body.label || `key-${Date.now()}`
@@ -33,13 +38,13 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      return respondError('internal_error', 'Failed to create key: ' + error.message, 500)
+      return respondError('internal_error', 'Failed to create key: ' + error.message, 500, undefined, rl)
     }
 
-    return respond({ ...data, raw_key: rawKey }, 201)
+    return respond({ ...data, raw_key: rawKey }, 201, undefined, rl)
   } catch (err: any) {
     console.error('POST /api/admin/keys error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }
 
@@ -48,9 +53,13 @@ export async function POST(request: NextRequest) {
  * List all API keys for this tenant.
  */
 export async function GET(request: NextRequest) {
+  let rl: ReturnType<typeof checkRateLimit> | undefined
   try {
     const auth = await resolveApiKey(request)
-    if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
+    if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401, undefined, rl)
+
+    rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
 
     const { data, error } = await supabase
       .from('api_keys')
@@ -59,12 +68,12 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     if (error) {
-      return respondError('internal_error', 'Failed to list keys: ' + error.message, 500)
+      return respondError('internal_error', 'Failed to list keys: ' + error.message, 500, undefined, rl)
     }
 
-    return respond(data || [], 200)
+    return respond(data || [], 200, undefined, rl)
   } catch (err: any) {
     console.error('GET /api/admin/keys error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }

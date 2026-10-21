@@ -11,12 +11,13 @@ import { logUsage } from '@/lib/usage'
  * Returns the original memory content with share metadata.
  */
 export async function GET(request: NextRequest) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
-    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
+    rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
 
     const limit = Math.min(parseInt(request.nextUrl.searchParams.get('limit') || '50', 10), 100)
 
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     if (error) {
-      return respondError('internal_error', 'Failed to fetch shared memories: ' + error.message, 500)
+      return respondError('internal_error', 'Failed to fetch shared memories: ' + error.message, 500, undefined, rl)
     }
 
     // Flatten the nested response
@@ -45,9 +46,9 @@ export async function GET(request: NextRequest) {
     }))
 
     logUsage(auth, 'GET /api/shared-with-me')
-    return respond(results, 200)
+    return respond(results, 200, undefined, rl)
   } catch (err: any) {
     console.error('GET /api/shared-with-me error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }

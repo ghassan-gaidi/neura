@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { respond, respondError } from '@/lib/response'
+import { checkRateLimit } from '@/lib/middleware'
 import crypto from 'crypto'
 
 /**
@@ -11,6 +12,7 @@ import crypto from 'crypto'
  * Returns the raw key once (won't be shown again).
  */
 export async function POST(request: NextRequest) {
+  let rl: ReturnType<typeof checkRateLimit> | undefined
   try {
     const authHeader = request.headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) {
@@ -25,6 +27,10 @@ export async function POST(request: NextRequest) {
       return respondError('unauthorized', 'Invalid or expired token', 401)
     }
 
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+    rl = checkRateLimit(`user:${user.id}:${ip}`)
+    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
+
     // Get user's tenant_id
     const { data: profile } = await supabase
       .from('users')
@@ -33,7 +39,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (!profile) {
-      return respondError('not_found', 'User profile not found', 404)
+      return respondError('not_found', 'User profile not found', 404, undefined, rl)
     }
 
     const body = await request.json().catch(() => ({}))
@@ -54,12 +60,12 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      return respondError('internal_error', 'Failed to create key: ' + error.message, 500)
+      return respondError('internal_error', 'Failed to create key: ' + error.message, 500, undefined, rl)
     }
 
-    return respond({ ...data, raw_key: rawKey }, 201)
+    return respond({ ...data, raw_key: rawKey }, 201, undefined, rl)
   } catch (err: any) {
     console.error('POST /api/auth/create-key error:', err)
-    return respondError('internal_error', err.message, 500)
+    return respondError('internal_error', err.message, 500, undefined, rl)
   }
 }

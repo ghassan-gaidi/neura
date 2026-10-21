@@ -10,12 +10,13 @@ import { respond, respondError } from '@/lib/response'
  * Query params: days (default 7)
  */
 export async function GET(request: NextRequest) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
-    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
+    rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
 
     const { searchParams } = new URL(request.url)
     const days = Math.min(parseInt(searchParams.get('days') || '7', 10), 90)
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     if (usageErr) {
-      return respondError('internal_error', 'Failed to fetch usage: ' + usageErr.message, 500)
+      return respondError('internal_error', 'Failed to fetch usage: ' + usageErr.message, 500, undefined, rl)
     }
 
     const usageLogs = usageByEndpoint || []
@@ -76,9 +77,9 @@ export async function GET(request: NextRequest) {
       credits_purchased: creditsPurchased,
       by_endpoint: endpointCounts,
       by_day: dailyCounts,
-    }, 200)
+    }, 200, undefined, rl)
   } catch (err: any) {
     console.error('GET /api/admin/usage error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }

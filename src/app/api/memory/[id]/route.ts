@@ -15,19 +15,20 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
+    rl = checkRateLimit(auth.apiKeyId)
     if (!rl.allowed) {
       return respondError('rate_limited', 'Rate limit exceeded', 429, {
         retry_after: Math.ceil(rl.resetMs / 1000),
-      })
+      }, rl)
     }
 
     const { id } = await params
-    if (!id) return respondError('validation_error', 'Memory ID is required', 400)
+    if (!id) return respondError('validation_error', 'Memory ID is required', 400, undefined, rl)
 
     const { data, error } = await supabase
       .from('memories')
@@ -39,16 +40,16 @@ export async function DELETE(
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return respondError('not_found', 'Memory not found', 404)
+        return respondError('not_found', 'Memory not found', 404, undefined, rl)
       }
-      return respondError('internal_error', 'Delete failed: ' + error.message, 500)
+      return respondError('internal_error', 'Delete failed: ' + error.message, 500, undefined, rl)
     }
 
     fireWebhook(auth.tenantId, 'memory.deleted', { memory_id: id })
-    return respond({ id, deleted: true }, 200)
+    return respond({ id, deleted: true }, 200, undefined, rl)
   } catch (err: any) {
     console.error('DELETE /api/memory error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }
 
@@ -60,7 +61,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
@@ -68,11 +70,11 @@ export async function PATCH(
     if (!id) return respondError('validation_error', 'Memory ID is required', 400)
 
     return await withIdempotency(async (req: NextRequest, auth: AuthContext) => {
-      const rl = checkRateLimit(auth.apiKeyId)
+      rl = checkRateLimit(auth.apiKeyId)
       if (!rl.allowed) {
         return respondError('rate_limited', 'Rate limit exceeded', 429, {
           retry_after: Math.ceil(rl.resetMs / 1000),
-        })
+        }, rl)
       }
 
       // Credits check — 1 credit for update
@@ -87,7 +89,7 @@ export async function PATCH(
 
       const body = await req.json().catch(() => ({}))
       if (!body.content && !body.metadata && !body.tags && body.importance === undefined) {
-        return respondError('validation_error', 'At least one field to update is required', 400)
+        return respondError('validation_error', 'At least one field to update is required', 400, undefined, rl)
       }
 
       const updates: Record<string, unknown> = {}
@@ -116,9 +118,9 @@ export async function PATCH(
 
       if (error) {
         if (error.code === 'PGRST116') {
-          return respondError('not_found', 'Memory not found', 404)
+          return respondError('not_found', 'Memory not found', 404, undefined, rl)
         }
-        return respondError('internal_error', 'Update failed: ' + error.message, 500)
+        return respondError('internal_error', 'Update failed: ' + error.message, 500, undefined, rl)
       }
 
       const nbPatch = await deductCredits(auth.tenantId, 'PATCH', '/api/memory', data.id)
@@ -129,10 +131,10 @@ export async function PATCH(
         tags: data.tags,
         importance: data.importance,
       })
-      return respond(data, 200, { credits_remaining: nbPatch ?? undefined })
+      return respond(data, 200, { credits_remaining: nbPatch ?? undefined }, rl)
     })(request, auth)
   } catch (err: any) {
     console.error('PATCH /api/memory error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }

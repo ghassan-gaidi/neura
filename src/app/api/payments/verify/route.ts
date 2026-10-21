@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { respond, respondError } from '@/lib/response'
+import { checkRateLimit, type RateLimitResult } from '@/lib/middleware'
 import { verifyPayment, redeemPayment } from '@/lib/payments'
 
 /**
@@ -19,7 +20,8 @@ import { verifyPayment, redeemPayment } from '@/lib/payments'
  *   { payment_tx: "...", tx_to: "...", tx_from: "..." }
  */
 export async function POST(request: NextRequest) {
-  try {
+    let rl: RateLimitResult | undefined
+try {
     // This endpoint uses API key auth to identify the tenant
     const { resolveApiKey } = await import('@/lib/auth')
     const { checkRateLimit } = await import('@/lib/middleware')
@@ -27,14 +29,14 @@ export async function POST(request: NextRequest) {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
-    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
+    rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
 
     const body = await request.json().catch(() => ({}))
     const txHash = body.payment_tx || body.txHash
 
     if (!txHash || typeof txHash !== 'string') {
-      return respondError('validation_error', 'payment_tx (transaction hash) is required', 400)
+      return respondError('validation_error', 'payment_tx (transaction hash) is required', 400, undefined, rl)
     }
 
     // Verify on-chain
@@ -44,7 +46,7 @@ export async function POST(request: NextRequest) {
       return respondError('payment_required', `Payment not confirmed: ${verification.error}`, 402, {
         action: verification.error?.startsWith('waiting_for_confirmations') ? 'wait_and_retry' : 'check_transaction',
         retry_after: verification.error?.startsWith('waiting_for_confirmations') ? 30 : undefined,
-      })
+      }, rl)
     }
 
     // Payment verified — redeem it
@@ -57,7 +59,7 @@ export async function POST(request: NextRequest) {
     if (!result.success) {
       return respondError('conflict', result.error || 'Payment could not be redeemed', 409, {
         action: 'resolve_conflict', retry_after: 30,
-      })
+      }, rl)
     }
 
     return respond({
@@ -67,9 +69,9 @@ export async function POST(request: NextRequest) {
       amount_usdc: verification.details!.amount,
       from: verification.details!.from,
       confirmations: verification.details!.confirmations,
-    }, 200)
+    }, 200, undefined, rl)
   } catch (err: any) {
     console.error('POST /api/payments/verify error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }

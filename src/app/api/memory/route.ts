@@ -22,7 +22,8 @@ function getUsageMeta(auth: AuthContext, balance?: number) {
  * Body: { content, metadata?, tags?, importance?, expires_at? }
  */
 export async function POST(request: NextRequest) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401, {
       action: 'provide_valid_api_key',
@@ -31,23 +32,18 @@ export async function POST(request: NextRequest) {
 
     return await withIdempotency(async (req: NextRequest, auth: AuthContext) => {
       // Rate limit check
-      const rl = checkRateLimit(auth.apiKeyId)
+      rl = checkRateLimit(auth.apiKeyId)
       if (!rl.allowed) {
         return respondError('rate_limited', 'Rate limit exceeded. Please wait and retry.', 429, {
           action: 'wait_and_retry',
           retry_after: Math.ceil(rl.resetMs / 1000),
-        })
+        }, rl)
       }
 
       // Free tier limit — 100 memories for the free plan
       const limit = await checkMemoryLimit(auth.tenantId)
       if (!limit.allowed) {
-        return respondError(
-          'free_tier_limit',
-          `Free tier allows ${limit.limit} memories. Upgrade to add more.`,
-          403,
-          { action: 'upgrade_plan' }
-        )
+        return respondError('free_tier_limit', `Free tier allows ${limit.limit} memories. Upgrade to add more.`, 403, { action: 'upgrade_plan' }, rl)
       }
 
       // Credits check
@@ -65,7 +61,7 @@ export async function POST(request: NextRequest) {
 
       const body: CreateMemoryRequest = await req.json().catch(() => ({}))
       if (!body.content || typeof body.content !== 'string') {
-        return respondError('validation_error', 'content is required and must be a string', 400)
+        return respondError('validation_error', 'content is required and must be a string', 400, undefined, rl)
       }
 
       // Generate embedding
@@ -75,7 +71,7 @@ export async function POST(request: NextRequest) {
       } catch (err: any) {
         return respondError('internal_error', 'Failed to generate embedding: ' + err.message, 500, {
           action: 'retry_with_explicit_embedding',
-        })
+        }, rl)
       }
 
       const { data, error } = await supabase
@@ -93,7 +89,7 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (error) {
-        return respondError('internal_error', 'Failed to store memory: ' + error.message, 500)
+        return respondError('internal_error', 'Failed to store memory: ' + error.message, 500, undefined, rl)
       }
 
       logUsage(auth, 'POST /api/memory')
@@ -106,11 +102,11 @@ export async function POST(request: NextRequest) {
       // Deduct credits
       const newBalance = await deductCredits(auth.tenantId, 'POST', '/api/memory', data.id)
       fireCreditsLowIfLow(auth.tenantId, newBalance)
-      return respond(data, 201, getUsageMeta(auth, newBalance ?? undefined))
+      return respond(data, 201, getUsageMeta(auth, newBalance ?? undefined), rl)
     })(request, auth)
   } catch (err: any) {
     console.error('POST /api/memory error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }
 
@@ -119,15 +115,16 @@ export async function POST(request: NextRequest) {
  * Semantic search or recent memory listing.
  */
 export async function GET(request: NextRequest) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
+    rl = checkRateLimit(auth.apiKeyId)
     if (!rl.allowed) {
       return respondError('rate_limited', 'Rate limit exceeded', 429, {
         retry_after: Math.ceil(rl.resetMs / 1000),
-      })
+      }, rl)
     }
 
     const { searchParams } = new URL(request.url)
@@ -145,11 +142,11 @@ export async function GET(request: NextRequest) {
         .limit(limit)
 
       if (error) {
-        return respondError('internal_error', 'Query failed: ' + error.message, 500)
+        return respondError('internal_error', 'Query failed: ' + error.message, 500, undefined, rl)
       }
 
       logUsage(auth, 'GET /api/memory')
-      return respond(data || [], 200, { total: data?.length || 0, ...getUsageMeta(auth) })
+      return respond(data || [], 200, { total: data?.length || 0, ...getUsageMeta(auth) }, rl)
     }
 
     // Semantic search — costs 1 credit
@@ -167,7 +164,7 @@ export async function GET(request: NextRequest) {
     try {
       queryEmbedding = await generateEmbedding(query)
     } catch (err: any) {
-      return respondError('internal_error', 'Failed to generate query embedding: ' + err.message, 500)
+      return respondError('internal_error', 'Failed to generate query embedding: ' + err.message, 500, undefined, rl)
     }
 
     const { data, error } = await supabase.rpc('search_memories', {
@@ -187,7 +184,7 @@ export async function GET(request: NextRequest) {
         .limit(limit)
 
       if (fbErr) {
-        return respondError('internal_error', 'Search failed: ' + fbErr.message, 500)
+        return respondError('internal_error', 'Search failed: ' + fbErr.message, 500, undefined, rl)
       }
 
       logUsage(auth, 'GET /api/memory')
@@ -195,7 +192,7 @@ export async function GET(request: NextRequest) {
         total: fallback?.length || 0,
         query,
         ...getUsageMeta(auth),
-      })
+      }, rl)
     }
 
     const results = (data || []).map((r: any) => ({
@@ -206,9 +203,9 @@ export async function GET(request: NextRequest) {
     logUsage(auth, 'GET /api/memory')
     const newBalance = await deductCredits(auth.tenantId, 'GET', '/api/memory')
     fireCreditsLowIfLow(auth.tenantId, newBalance)
-    return respond(results, 200, { total: results.length, query, ...getUsageMeta(auth, newBalance ?? undefined) })
+    return respond(results, 200, { total: results.length, query, ...getUsageMeta(auth, newBalance ?? undefined) }, rl)
   } catch (err: any) {
     console.error('GET /api/memory error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }

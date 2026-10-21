@@ -13,15 +13,16 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
-    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
+    rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
 
     const { id } = await params
-    if (!id) return respondError('validation_error', 'Webhook ID is required', 400)
+    if (!id) return respondError('validation_error', 'Webhook ID is required', 400, undefined, rl)
 
     const { data, error } = await supabase
       .from('webhooks')
@@ -31,15 +32,15 @@ export async function GET(
       .single()
 
     if (error) {
-      if (error.code === 'PGRST116') return respondError('not_found', 'Webhook not found', 404)
-      return respondError('internal_error', 'Failed to get webhook: ' + error.message, 500)
+      if (error.code === 'PGRST116') return respondError('not_found', 'Webhook not found', 404, undefined, rl)
+      return respondError('internal_error', 'Failed to get webhook: ' + error.message, 500, undefined, rl)
     }
 
     logUsage(auth, 'GET /api/webhooks/:id')
-    return respond(data, 200)
+    return respond(data, 200, undefined, rl)
   } catch (err: any) {
     console.error('GET /api/webhooks/:id error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }
 
@@ -51,19 +52,20 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
-    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
+    rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
 
     const { id } = await params
-    if (!id) return respondError('validation_error', 'Webhook ID is required', 400)
+    if (!id) return respondError('validation_error', 'Webhook ID is required', 400, undefined, rl)
 
     const body = await request.json().catch(() => ({}))
     if (!body.url && !body.events && body.is_active === undefined && !body.secret) {
-      return respondError('validation_error', 'At least one field to update is required', 400)
+      return respondError('validation_error', 'At least one field to update is required', 400, undefined, rl)
     }
 
     const updates: Record<string, unknown> = {}
@@ -72,10 +74,10 @@ export async function PATCH(
       try {
         const parsed = new URL(body.url)
         if (!['http:', 'https:'].includes(parsed.protocol)) {
-          return respondError('validation_error', 'url must use http or https protocol', 400)
+          return respondError('validation_error', 'url must use http or https protocol', 400, undefined, rl)
         }
       } catch {
-        return respondError('validation_error', 'url must be a valid URL', 400)
+        return respondError('validation_error', 'url must be a valid URL', 400, undefined, rl)
       }
       updates.url = body.url
     }
@@ -92,15 +94,15 @@ export async function PATCH(
       .single()
 
     if (error) {
-      if (error.code === 'PGRST116') return respondError('not_found', 'Webhook not found', 404)
-      return respondError('internal_error', 'Failed to update webhook: ' + error.message, 500)
+      if (error.code === 'PGRST116') return respondError('not_found', 'Webhook not found', 404, undefined, rl)
+      return respondError('internal_error', 'Failed to update webhook: ' + error.message, 500, undefined, rl)
     }
 
     logUsage(auth, 'PATCH /api/webhooks/:id')
-    return respond(data, 200)
+    return respond(data, 200, undefined, rl)
   } catch (err: any) {
     console.error('PATCH /api/webhooks/:id error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }
 
@@ -112,15 +114,16 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
-    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
+    rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
 
     const { id } = await params
-    if (!id) return respondError('validation_error', 'Webhook ID is required', 400)
+    if (!id) return respondError('validation_error', 'Webhook ID is required', 400, undefined, rl)
 
     const { data, error } = await supabase
       .from('webhooks')
@@ -131,14 +134,14 @@ export async function DELETE(
       .single()
 
     if (error) {
-      if (error.code === 'PGRST116') return respondError('not_found', 'Webhook not found', 404)
-      return respondError('internal_error', 'Failed to delete webhook: ' + error.message, 500)
+      if (error.code === 'PGRST116') return respondError('not_found', 'Webhook not found', 404, undefined, rl)
+      return respondError('internal_error', 'Failed to delete webhook: ' + error.message, 500, undefined, rl)
     }
 
     logUsage(auth, 'DELETE /api/webhooks/:id')
-    return respond({ id, deleted: true }, 200)
+    return respond({ id, deleted: true }, 200, undefined, rl)
   } catch (err: any) {
     console.error('DELETE /api/webhooks/:id error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }

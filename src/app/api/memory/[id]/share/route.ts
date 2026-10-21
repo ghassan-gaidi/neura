@@ -16,7 +16,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
@@ -24,8 +25,8 @@ export async function POST(
     if (!id) return respondError('validation_error', 'Memory ID is required', 400)
 
     return await withIdempotency(async (req: NextRequest, auth: AuthContext) => {
-      const rl = checkRateLimit(auth.apiKeyId)
-      if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
+      rl = checkRateLimit(auth.apiKeyId)
+      if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
 
       // Verify the memory exists and belongs to this tenant
       const { data: memory, error: memErr } = await supabase
@@ -36,17 +37,17 @@ export async function POST(
         .single()
 
       if (memErr || !memory) {
-        return respondError('not_found', 'Memory not found', 404)
+        return respondError('not_found', 'Memory not found', 404, undefined, rl)
       }
 
       const body = await req.json().catch(() => ({}))
       if (!body.target_tenant_id) {
-        return respondError('validation_error', 'target_tenant_id is required', 400)
+        return respondError('validation_error', 'target_tenant_id is required', 400, undefined, rl)
       }
 
       const permission = body.permission || 'read'
       if (!['read', 'write'].includes(permission)) {
-        return respondError('validation_error', 'permission must be "read" or "write"', 400)
+        return respondError('validation_error', 'permission must be "read" or "write"', 400, undefined, rl)
       }
 
       const { data, error } = await supabase
@@ -64,7 +65,7 @@ export async function POST(
         .single()
 
       if (error) {
-        return respondError('internal_error', 'Failed to share memory: ' + error.message, 500)
+        return respondError('internal_error', 'Failed to share memory: ' + error.message, 500, undefined, rl)
       }
 
       // Fire webhook
@@ -75,11 +76,11 @@ export async function POST(
       })
 
       logUsage(auth, 'POST /api/memory/:id/share')
-      return respond(data, 201)
+      return respond(data, 201, undefined, rl)
     })(request, auth)
   } catch (err: any) {
     console.error('POST /api/memory/:id/share error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }
 
@@ -91,15 +92,16 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
-    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
+    rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
 
     const { id } = await params
-    if (!id) return respondError('validation_error', 'Memory ID is required', 400)
+    if (!id) return respondError('validation_error', 'Memory ID is required', 400, undefined, rl)
 
     const { data, error } = await supabase
       .from('shared_memories')
@@ -108,14 +110,14 @@ export async function GET(
       .eq('owner_tenant_id', auth.tenantId)
 
     if (error) {
-      return respondError('internal_error', 'Failed to list shares: ' + error.message, 500)
+      return respondError('internal_error', 'Failed to list shares: ' + error.message, 500, undefined, rl)
     }
 
     logUsage(auth, 'GET /api/memory/:id/share')
-    return respond(data || [], 200)
+    return respond(data || [], 200, undefined, rl)
   } catch (err: any) {
     console.error('GET /api/memory/:id/share error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }
 
@@ -127,17 +129,18 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
-    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) })
+    rl = checkRateLimit(auth.apiKeyId)
+    if (!rl.allowed) return respondError('rate_limited', 'Rate limit exceeded', 429, { retry_after: Math.ceil(rl.resetMs / 1000) }, rl)
 
     const { id } = await params
     const target = request.nextUrl.searchParams.get('target')
     if (!id || !target) {
-      return respondError('validation_error', 'Memory ID and target tenant_id are required', 400)
+      return respondError('validation_error', 'Memory ID and target tenant_id are required', 400, undefined, rl)
     }
 
     const { data, error } = await supabase
@@ -150,14 +153,14 @@ export async function DELETE(
       .single()
 
     if (error) {
-      if (error.code === 'PGRST116') return respondError('not_found', 'Share not found', 404)
-      return respondError('internal_error', 'Failed to remove share: ' + error.message, 500)
+      if (error.code === 'PGRST116') return respondError('not_found', 'Share not found', 404, undefined, rl)
+      return respondError('internal_error', 'Failed to remove share: ' + error.message, 500, undefined, rl)
     }
 
     logUsage(auth, 'DELETE /api/memory/:id/share')
-    return respond({ memory_id: id, target_tenant_id: target, deleted: true }, 200)
+    return respond({ memory_id: id, target_tenant_id: target, deleted: true }, 200, undefined, rl)
   } catch (err: any) {
     console.error('DELETE /api/memory/:id/share error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }

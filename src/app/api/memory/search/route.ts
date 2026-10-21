@@ -14,15 +14,16 @@ import { checkCredits, deductCredits, buildX402Response, fireCreditsLowIfLow } f
  * Body: { query?, embedding?, filters?, limit?, min_score? }
  */
 export async function POST(request: NextRequest) {
-  try {
+    let rl: ReturnType<typeof checkRateLimit> | undefined
+try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
-    const rl = checkRateLimit(auth.apiKeyId)
+    rl = checkRateLimit(auth.apiKeyId)
     if (!rl.allowed) {
       return respondError('rate_limited', 'Rate limit exceeded', 429, {
         retry_after: Math.ceil(rl.resetMs / 1000),
-      })
+      }, rl)
     }
 
     // Credits check — 2 credits for advanced search
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     const body: SearchMemoryRequest = await request.json().catch(() => ({}))
     if (!body.query && !body.filters) {
-      return respondError('validation_error', 'Provide a query or filters', 400)
+      return respondError('validation_error', 'Provide a query or filters', 400, undefined, rl)
     }
 
     const limit = Math.min(body.limit || 10, 100)
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
       })
 
       if (error) {
-        return respondError('internal_error', 'Search failed: ' + error.message, 500)
+        return respondError('internal_error', 'Search failed: ' + error.message, 500, undefined, rl)
       }
 
       let results = (data || []).map((r: any) => ({
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
       logUsage(auth, 'POST /api/memory/search')
       const nb1 = await deductCredits(auth.tenantId, 'POST', '/api/memory/search')
       fireCreditsLowIfLow(auth.tenantId, nb1)
-      return respond(results, 200, { total: results.length, query: body.query, credits_remaining: nb1 ?? undefined })
+      return respond(results, 200, { total: results.length, query: body.query, credits_remaining: nb1 ?? undefined }, rl)
     }
 
     // Filter-only search
@@ -114,16 +115,16 @@ export async function POST(request: NextRequest) {
     const { data, error } = await query
 
     if (error) {
-      return respondError('internal_error', 'Search failed: ' + error.message, 500)
+      return respondError('internal_error', 'Search failed: ' + error.message, 500, undefined, rl)
     }
 
     logUsage(auth, 'POST /api/memory/search')
     const nb2 = await deductCredits(auth.tenantId, 'POST', '/api/memory/search')
     fireCreditsLowIfLow(auth.tenantId, nb2)
-    return respond(data || [], 200, { total: data?.length || 0, credits_remaining: nb2 ?? undefined })
+    return respond(data || [], 200, { total: data?.length || 0, credits_remaining: nb2 ?? undefined }, rl)
   } catch (err: any) {
     console.error('POST /api/memory/search error:', err)
-    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 })
+    return respondError('internal_error', err.message, 500, { action: 'retry', retry_after: 1 }, rl)
   }
 }
 
