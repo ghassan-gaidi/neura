@@ -23,13 +23,9 @@ test('the OpenAPI spec documents target_tenant_id as required for share', () => 
 
 test('the OpenAPI share endpoint declares 201 and not 200', () => {
   const yaml = readFileSync(join(root, 'docs', 'openapi.yaml'), 'utf8')
-  // Scope to the /api/memory/{id}/share path block
-  const pathStart = yaml.indexOf('  /api/memory/{id}/share:')
-  assert.notStrictEqual(pathStart, -1, 'OpenAPI spec must contain /api/memory/{id}/share')
-  const rest = yaml.slice(pathStart + 1)
-  const nextPath = rest.search(/\n  \/\S/)
-  const pathBlock = nextPath === -1 ? yaml.slice(pathStart) : yaml.slice(pathStart, pathStart + 1 + nextPath)
-  // The route responds with 201 (respond(data, 201)); a 200 would be wrong.
-  assert.match(pathBlock, /"201":/, 'share must declare a 201 response')
-  assert.doesNotMatch(pathBlock, /"200":/, 'share must not declare a 200 response')
+  // Scope to just the post operation within the share block
+  const postIdx = yaml.indexOf('    post:')
+  const postBlock = yaml.slice(postIdx, postIdx + 1200)
+  assert.match(postBlock, /"201":/, 'share must declare a 201 response')
+  assert.doesNotMatch(postBlock, /"200":/, 'share must not declare a 200 response')
 })

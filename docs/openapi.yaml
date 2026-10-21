@@ -8,8 +8,11 @@ info:
     Every error is machine-readable so agents can retry intelligently
     without human help.
 
+    Memory content is embedded automatically with Voyage AI (1024-dim),
+    falling back to Gemini when Voyage is unavailable.
+
     Base URL: `https://neura.sh`
-  version: "0.2.0"
+  version: "0.3.0"
   contact:
     name: Neura
     url: https://neura.sh
@@ -24,7 +27,7 @@ paths:
     post:
       summary: Store a memory
       description: |
-        Stores a piece of information with automatic embedding via OpenAI.
+        Stores a piece of information with auto-embedding via Voyage AI (1024-dim), with Gemini fallback.
         The content is vectorized and indexed for semantic search.
 
         Use this for: facts, preferences, conversation summaries, task results.
@@ -429,6 +432,55 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "429":
           $ref: "#/components/responses/RateLimited"
+    get:
+      summary: List shares for memory
+      operationId: listShares
+      tags: [Sharing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Shares
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    delete:
+      summary: Remove a share
+      operationId: removeShare
+      tags: [Sharing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: target
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Share removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /api/shared-with-me:
     get:
@@ -730,6 +782,19 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "429":
           $ref: "#/components/responses/RateLimited"
+    get:
+      summary: Get retry status
+      operationId: getRetryWebhooks
+      tags: [Webhooks]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Retry status
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   # ─── Credits & Payments ──────────────────────────────────
   /api/credits:
@@ -754,6 +819,39 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "429":
           $ref: "#/components/responses/RateLimited"
+    post:
+      summary: Top up credits
+      description: Redeem a verified USDC payment to add credits.
+      operationId: topUpCredits
+      tags: [Payments]
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payment_tx:
+                  type: string
+                  description: Verified USDC transaction hash
+                amount_usdc:
+                  type: string
+                  description: Expected amount (optional)
+                test_top_up:
+                  type: boolean
+                  description: Test mode (optional)
+      responses:
+        "200":
+          description: Credits added
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /api/payments/verify:
     post:
@@ -771,11 +869,14 @@ paths:
           application/json:
             schema:
               type: object
-              required: [transaction_hash]
+              required: [payment_tx]
               properties:
-                transaction_hash:
+                payment_tx:
                   type: string
-                  description: Base USDC transfer transaction hash
+                  description: On-chain transaction hash of the USDC transfer.
+                amount_usdc:
+                  type: string
+                  description: Expected amount in USDC. Optional.
       responses:
         "200":
           description: Payment verified and credited
@@ -975,6 +1076,121 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "429":
           $ref: "#/components/responses/RateLimited"
+
+  /api/auth/create-key:
+    post:
+      summary: Create API key
+      description: Create an additional API key. Requires Supabase Auth JWT.
+      operationId: createApiKeyAuth
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+      responses:
+        "201":
+          description: API key created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      label:
+                        type: string
+                      raw_key:
+                        type: string
+                        description: Full key shown once
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/memory/cleanup:
+    get:
+      summary: Clean up expired memories
+      description: Cron-gated; deletes expired memories and emits memory.expiring.
+      operationId: memoryCleanup
+      tags: [Memory]
+      security: []
+      responses:
+        "200":
+          description: Cleanup complete
+        "403":
+          description: Missing cron header
+
+  /api/payments/poll:
+    get:
+      summary: Poll for uncredited payments
+      description: Cron-gated; scans Base for uncredited USDC transfers.
+      operationId: pollPayments
+      tags: [Payments]
+      security: []
+      responses:
+        "200":
+          description: Poll results
+        "403":
+          description: Missing cron header
+
+  /api/webhooks/retry-cron:
+    get:
+      summary: Retry all failed deliveries
+      description: Cron-gated.
+      operationId: retryAllWebhooks
+      tags: [Webhooks]
+      security: []
+      responses:
+        "200":
+          description: Retry complete
+        "403":
+          description: Missing cron header
+
+  /api/migrate:
+    post:
+      summary: Run a SQL migration
+      description: Requires x-migration-key header.
+      operationId: migrateSql
+      tags: [Admin]
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sql]
+              properties:
+                sql:
+                  type: string
+      responses:
+        "200":
+          description: Migration applied
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: Migration endpoint disabled
+    get:
+      summary: Migrate endpoint info
+      operationId: migrateInfo
+      tags: [Admin]
+      security: []
+      responses:
+        "200":
+          description: Endpoint status
+
 
 components:
   securitySchemes:
