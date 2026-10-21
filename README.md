@@ -85,7 +85,7 @@ neura.state.set("current_goal", {"task": "Build API"})
 | `memory.create(input)` | Store with auto-embedding | 1 credit |
 | `memory.search(query, limit?)` | Semantic search | 1 credit |
 | `memory.searchAdvanced(input)` | Filter by tags, date, importance | 2 credits |
-| `memory.recent(limit?)` | Most recent memories | Free |
+| `memory.recent(limit?)` | Most recent memories | 1 credit |
 | `memory.update(id, input)` | Update fields, re-embeds if content changes | 1 credit |
 | `memory.delete(id)` | Delete a memory | Free |
 | `memory.batchCreate(inputs[])` | Store up to 25 at once | 1 credit each |
@@ -155,26 +155,27 @@ neura.state.set("current_goal", {"task": "Build API"})
             ┌──────┴──────┐
             │  Supabase   │
             │ (pgvector)  │
-            │ + Vercel KV │
+            │              │
             └─────────────┘
 ```
 
 ---
 
-## 🛣️ API Routes (28 Endpoints)
+## 🛣️ API Routes (38 API endpoints across 24 routes)
 
 | Group | Endpoints |
 |-------|-----------|
-| **Memory** | `POST/GET /api/memory`, `POST /api/memory/batch`, `DELETE /api/memory/batch`, `POST /api/memory/search`, `POST /api/memory/summarize`, `PATCH/DELETE /api/memory/[id]`, `POST /api/memory/[id]/share`, `GET /api/memory/cleanup` |
+| **Memory** | `POST/GET /api/memory`, `POST/DELETE /api/memory/batch`, `POST /api/memory/search`, `POST /api/memory/summarize`, `PATCH/DELETE /api/memory/[id]`, `POST/GET/DELETE /api/memory/[id]/share`, `GET /api/memory/cleanup` |
 | **State** | `POST/GET /api/state`, `GET/DELETE /api/state/[key]` |
-| **Webhooks** | `POST/GET /api/webhooks`, `GET/PATCH/DELETE /api/webhooks/[id]`, `POST /api/webhooks/retry` |
+| **Webhooks** | `POST/GET /api/webhooks`, `GET/PATCH/DELETE /api/webhooks/[id]`, `POST/GET /api/webhooks/retry`, `GET /api/webhooks/retry-cron` |
 | **Sharing** | `GET /api/shared-with-me` |
 | **Payments** | `POST /api/payments/verify`, `GET /api/payments/poll` |
-| **Credits** | `GET /api/credits` |
+| **Credits** | `GET/POST /api/credits` |
 | **Admin** | `GET/POST /api/admin/keys`, `DELETE /api/admin/keys/[id]`, `GET /api/admin/transactions`, `GET /api/admin/usage` |
 | **Auth** | `GET /api/auth/me`, `POST /api/auth/create-key` |
+| **Internal** | `POST/GET /api/migrate` |
 
-Full OpenAPI 3.1 spec available at `https://neura.sh/openapi.yaml`.
+Full OpenAPI 3.1 spec available at `https://neura-blond.vercel.app/openapi.yaml`.
 
 ---
 
@@ -207,7 +208,7 @@ Full OpenAPI 3.1 spec available at `https://neura.sh/openapi.yaml`.
 | **Embeddings** | Voyage AI with Gemini fallback |
 | **Auth** | Supabase Auth (magic link) + SHA-256 API keys |
 | **Payments** | Base blockchain USDC (direct RPC — no third-party) |
-| **Rate Limiting** | In-memory sliding window (100 req/60s) + headers |
+| **Rate Limiting** | 100 req/min per API key (in-memory, per instance) + `X-RateLimit-*` headers |
 | **SDKs** | TypeScript (`neura-api@0.3.0`) + Python (`neura-api-python@0.3.0`) |
 | **Deploy** | Vercel — `neura-blond.vercel.app` |
 
