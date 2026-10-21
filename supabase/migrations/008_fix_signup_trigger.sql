@@ -1,6 +1,13 @@
 -- Fix: signup trigger missing balance_after in credit_transactions INSERT
 -- The credit_transactions table requires balance_after (NOT NULL),
 -- but create_user_api_key() was inserting without it, causing signup to crash.
+--
+-- Renumbered from 007 to 008: two files shared the 007 prefix, which made
+-- `supabase db push` and `supabase db reset` fail with "duplicate migration
+-- version". This file sorts after 007_embeddings_dim_1024.sql.
+--
+-- NOTE: the `on_user_created` trigger this function backs is dropped in
+-- 012_enable_rls.sql — signup provisioning is app-layer in /api/auth/me.
 
 CREATE OR REPLACE FUNCTION create_user_api_key()
 RETURNS TRIGGER AS $$
