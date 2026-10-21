@@ -2,9 +2,9 @@
  * Webhook delivery system.
  * Fires webhooks asynchronously for important events.
  * Failed deliveries are retried with exponential backoff.
- * In production, replace with a queue (Inngest, Bull, etc.).
  */
 
+import { after } from 'next/server'
 import { supabase } from './supabase'
 
 export type WebhookEvent =
@@ -35,9 +35,32 @@ function computeNextRetry(retryCount: number): Date | null {
 /**
  * Fire a webhook event for the given tenant.
  * Finds all active webhooks subscribed to this event and delivers them.
- * Fire-and-forget — never blocks the request.
+ *
+ * Delivery is scheduled with Next.js `after()` so the request can respond
+ * immediately while the serverless function stays alive long enough to
+ * complete the delivery. A bare fire-and-forget promise is NOT safe here:
+ * Vercel freezes the function once the response is sent, which silently
+ * drops the delivery (and its `webhook_deliveries` log row).
  */
-export async function fireWebhook(
+export function fireWebhook(
+  tenantId: string,
+  event: WebhookEvent,
+  data: Record<string, unknown>
+): void {
+  const deliver = () => deliverWebhookEvent(tenantId, event, data)
+  try {
+    after(deliver)
+  } catch {
+    // `after()` throws outside a request scope. Fall back to awaiting the
+    // delivery inline so it is not lost.
+    void deliver()
+  }
+}
+
+/**
+ * Look up the tenant's active webhooks for an event and deliver to each.
+ */
+export async function deliverWebhookEvent(
   tenantId: string,
   event: WebhookEvent,
   data: Record<string, unknown>
