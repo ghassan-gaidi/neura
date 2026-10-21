@@ -6,7 +6,7 @@ const endpoints = [
     method: 'POST',
     path: '/api/memory',
     title: 'Store Memory',
-    desc: 'Store a fact with auto-embedding via OpenAI. The content is vectorized and indexed for semantic search.',
+    desc: 'Store a fact with auto-embedding via Voyage AI (1024-dim). The content is vectorized and indexed for semantic search.',
     body: `{
   "content": "User prefers dark mode in all apps",
   "tags": ["preference", "ui"],
@@ -113,6 +113,31 @@ const endpoints = [
     body: null,
     response: `{ "data": { "key": "...", "deleted": true } }`,
   },
+  { method: 'POST', path: '/api/memory/batch', title: 'Batch Memory Store', desc: 'Store up to 25 memories. Costs 1 credit per memory.', body: null, response: null },
+  { method: 'DELETE', path: '/api/memory/batch', title: 'Batch Memory Delete', desc: 'Delete up to 100 memories by ID. Free.', body: null, response: null },
+  { method: 'POST', path: '/api/memory/summarize', title: 'Summarize Memories', desc: 'Summarize memories. Costs 5 credits. Provide memory_ids or a query.', body: null, response: null },
+  { method: 'POST', path: '/api/memory/:id/share', title: 'Share Memory', desc: 'Share a memory with another tenant. Body: { target_tenant_id, permission }.', body: null, response: null },
+  { method: 'GET', path: '/api/memory/:id/share', title: 'List Memory Shares', desc: 'List who a memory is shared with.', body: null, response: null },
+  { method: 'DELETE', path: '/api/memory/:id/share', title: 'Remove Memory Share', desc: 'Remove a share. Query: ?target=<tenant_id>.', body: null, response: null },
+  { method: 'GET', path: '/api/memory/cleanup', title: 'Memory Cleanup', desc: 'Cron: delete expired memories and notify memory.expiring.', body: null, response: null },
+  { method: 'POST', path: '/api/webhooks', title: 'Register Webhook', desc: 'Register a webhook. Body: { url, events, secret? }.', body: null, response: null },
+  { method: 'GET', path: '/api/webhooks', title: 'List Webhooks', desc: 'List registered webhooks.', body: null, response: null },
+  { method: 'GET', path: '/api/webhooks/:id', title: 'Get Webhook', desc: 'Get a webhook. The HMAC secret is never returned.', body: null, response: null },
+  { method: 'PATCH', path: '/api/webhooks/:id', title: 'Update Webhook', desc: 'Update a webhook URL, events, or secret.', body: null, response: null },
+  { method: 'DELETE', path: '/api/webhooks/:id', title: 'Delete Webhook', desc: 'Delete a webhook.', body: null, response: null },
+  { method: 'POST', path: '/api/webhooks/retry', title: 'Retry Failed Deliveries', desc: 'Retry this tenant\'s failed deliveries.', body: null, response: null },
+  { method: 'GET', path: '/api/webhooks/retry-cron', title: 'Retry All Deliveries', desc: 'Cron: retry all failed deliveries.', body: null, response: null },
+  { method: 'GET', path: '/api/shared-with-me', title: 'Shared With Me', desc: 'List memories shared with this tenant.', body: null, response: null },
+  { method: 'POST', path: '/api/credits', title: 'Top Up Credits', desc: 'Top up credits. Body: { payment_tx, amount_usdc? }.', body: null, response: null },
+  { method: 'POST', path: '/api/payments/verify', title: 'Verify Payment', desc: 'Verify a USDC transfer on Base and redeem credits.', body: null, response: null },
+  { method: 'GET', path: '/api/payments/poll', title: 'Poll Payments', desc: 'Cron: scan Base for uncredited USDC transfers.', body: null, response: null },
+  { method: 'GET', path: '/api/auth/me', title: 'Get Profile', desc: 'Get the current profile, API key, and credit balance. Supabase JWT required.', body: null, response: null },
+  { method: 'POST', path: '/api/auth/create-key', title: 'Create API Key', desc: 'Create an additional API key. Supabase JWT required.', body: null, response: null },
+  { method: 'GET', path: '/api/admin/keys', title: 'List API Keys', desc: 'List API keys for this tenant.', body: null, response: null },
+  { method: 'POST', path: '/api/admin/keys', title: 'Create API Key', desc: 'Create an API key. The raw key is returned once.', body: null, response: null },
+  { method: 'DELETE', path: '/api/admin/keys/:id', title: 'Revoke API Key', desc: 'Revoke an API key.', body: null, response: null },
+  { method: 'GET', path: '/api/admin/transactions', title: 'List Transactions', desc: 'List credit transactions.', body: null, response: null },
+  { method: 'GET', path: '/api/admin/usage', title: 'Usage Stats', desc: 'Usage and credit spend by endpoint and day.', body: null, response: null },
 ]
 
 const errorCodes = [
@@ -234,8 +259,7 @@ export default function DocsPage() {
             100 requests per 60 seconds per API key. Exceeded requests return 429.
           </p>
           <div className="text-sm space-y-1">
-            <p><code className="text-xs bg-white/10 border border-white/10 px-1">X-RateLimit-Limit</code> — max requests per window</p>
-            <p><code className="text-xs bg-white/10 border border-white/10 px-1">X-RateLimit-Remaining</code> — requests left in window</p>
+            <p>Every response includes <code className="text-xs bg-white/10 border border-white/10 px-1">X-RateLimit-Limit</code>, <code className="text-xs bg-white/10 border border-white/10 px-1">X-RateLimit-Remaining</code>, and <code className="text-xs bg-white/10 border border-white/10 px-1">X-RateLimit-Reset</code>.</p>
             <p><code className="text-xs bg-white/10 border border-white/10 px-1">Retry-After</code> — seconds to wait on 429</p>
           </div>
         </section>
@@ -244,8 +268,9 @@ export default function DocsPage() {
         <section className="mb-16">
           <h2 className="text-2xl font-bold mb-4" style={{ fontFamily: 'var(--font-syne)' }}>Idempotency</h2>
           <p className="text-sm text-white/40">
-            POST and PATCH endpoints accept an <code className="text-xs bg-white/10 border border-white/10 px-1">Idempotency-Key</code> header.
-            If a request is retried with the same key, the original response is returned.
+            All memory and state write endpoints accept an <code className="text-xs bg-white/10 border border-white/10 px-1">Idempotency-Key</code> header.
+            That is <code className="text-xs bg-white/10 border border-white/10 px-1">POST /api/memory</code>, <code className="text-xs bg-white/10 border border-white/10 px-1">POST /api/memory/batch</code>, <code className="text-xs bg-white/10 border border-white/10 px-1">PATCH /api/memory/:id</code>, <code className="text-xs bg-white/10 border border-white/10 px-1">POST /api/memory/:id/share</code>, <code className="text-xs bg-white/10 border border-white/10 px-1">POST /api/state</code>, and <code className="text-xs bg-white/10 border border-white/10 px-1">DELETE /api/state/:key</code>.
+            A replay returns the original response with <code className="text-xs bg-white/10 border border-white/10 px-1">X-Idempotency-Replayed: true</code> and is not charged twice.
             Cached for 24 hours. Use this for safe retries.
           </p>
         </section>
@@ -272,7 +297,7 @@ neura = Neura(api_key="sk-...")
 neura.memory.create(content="...")
 r = neura.memory.search("...")`}</pre>
               <p className="mt-2 text-xs text-white/30">0 deps, stdlib only, auto-retry</p>
-              <p className="mt-1 text-xs text-white/20">pip install neura-api</p>
+              <p className="mt-1 text-xs text-white/20">pip install neura-api-python</p>
             </div>
           </div>
         </section>

@@ -104,7 +104,7 @@ export default function Home() {
         {/* Stats */}
         <section className="mb-24 grid grid-cols-2 md:grid-cols-4 gap-px bg-white/10">
           {[
-            { n: '28', label: 'API Endpoints' },
+            { n: '38', label: 'API Endpoints' },
             { n: '2', label: 'SDKs (TS + Python)' },
             { n: '1,000', label: 'Free Credits' },
             { n: '$1', label: 'Per 1k Credits' },

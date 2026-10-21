@@ -23,7 +23,7 @@ export function APIReferenceSchema() {
     endpoint: [
       {
         '@type': 'WebAPIEndpoint',
-        description: 'Store a memory with auto-embedding via OpenAI',
+        description: 'Store a memory with auto-embedding via Voyage AI with Gemini fallback',
         method: 'POST',
         url: 'https://neura.sh/api/memory',
       },

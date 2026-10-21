@@ -35,7 +35,7 @@ export const metadata: Metadata = {
     "AI external brain",
     "agentic memory",
     "pgvector",
-    "OpenAI embeddings",
+    "Voyage AI embeddings",
     "Base blockchain payments",
     "USDC micropayments",
     "autonomous AI payments",
