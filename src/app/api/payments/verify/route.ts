@@ -21,7 +21,7 @@ import { verifyPayment, redeemPayment } from '@/lib/payments'
  */
 export async function POST(request: NextRequest) {
   let rl: RateLimitResult | undefined
-try {
+  try {
     // This endpoint uses API key auth to identify the tenant
     const { resolveApiKey } = await import('@/lib/auth')
     const { checkRateLimit } = await import('@/lib/middleware')

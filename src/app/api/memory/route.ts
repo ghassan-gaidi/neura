@@ -23,7 +23,7 @@ function getUsageMeta(auth: AuthContext, balance?: number) {
  */
 export async function POST(request: NextRequest) {
   let rl: ReturnType<typeof checkRateLimit> | undefined
-try {
+  try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401, {
       action: 'provide_valid_api_key',
@@ -113,7 +113,7 @@ try {
  */
 export async function GET(request: NextRequest) {
   let rl: ReturnType<typeof checkRateLimit> | undefined
-try {
+  try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 

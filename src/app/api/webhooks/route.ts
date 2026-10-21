@@ -12,7 +12,7 @@ import { logUsage } from '@/lib/usage'
  */
 export async function POST(request: NextRequest) {
   let rl: ReturnType<typeof checkRateLimit> | undefined
-try {
+  try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
@@ -72,7 +72,7 @@ try {
  */
 export async function GET(request: NextRequest) {
   let rl: ReturnType<typeof checkRateLimit> | undefined
-try {
+  try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 

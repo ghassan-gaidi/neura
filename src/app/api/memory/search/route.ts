@@ -15,7 +15,7 @@ import { checkCredits, deductCredits, buildX402Response, fireCreditsLowIfLow } f
  */
 export async function POST(request: NextRequest) {
   let rl: ReturnType<typeof checkRateLimit> | undefined
-try {
+  try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
 
