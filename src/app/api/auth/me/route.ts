@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
         .insert({ tenant_id: tenantId, amount: 1000, balance_after: 1000, transaction_type: 'signup_bonus', description: 'Welcome to Neura — 1000 free credits' })
 
       return respond({
-        user: { id: user.id, email: user.email, plan: 'free', created_at: new Date().toISOString() },
+        user: { id: user.id, email: user.email, tenant_id: tenantId, plan: 'free', created_at: new Date().toISOString() },
         api_key: newKey,
         raw_key: newRawKey,
         credits: 1000,
@@ -127,6 +127,7 @@ export async function GET(request: NextRequest) {
       user: {
         id: user.id,
         email: user.email,
+        tenant_id: profile.tenant_id,
         plan: profile.plan,
         created_at: profile.created_at,
       },
