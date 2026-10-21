@@ -77,7 +77,32 @@ class HttpClient:
                     x402 = X402Details(error["x402"])
                     try:
                         import asyncio
-                        tx_hash = asyncio.run(handle_payment_required(self.auto_pay, x402))
+
+                        # asyncio.run() raises RuntimeError when an event loop is
+                        # already running (notebooks, async frameworks). Detect
+                        # that and fail with a clear, actionable error instead.
+                        try:
+                            asyncio.get_running_loop()
+                        except RuntimeError:
+                            # No loop running in this thread — safe to drive
+                            # the coroutine to completion here.
+                            tx_hash = asyncio.run(
+                                handle_payment_required(self.auto_pay, x402)
+                            )
+                        else:
+                            raise NeuraHttpError(
+                                402,
+                                {
+                                    "code": "async_context_unsupported",
+                                    "message": (
+                                        "Auto-payment requires a synchronous context. "
+                                        "Call the payment callback yourself and retry "
+                                        "the request."
+                                    ),
+                                    "action": "handle_payment_manually",
+                                },
+                            )
+
                         if tx_hash:
                             # Wait for confirmation
                             wait_for_confirmations(tx_hash, 2, self.auto_pay.get("rpc_url"))
@@ -97,6 +122,10 @@ class HttpClient:
                             with urlopen(verify_req, timeout=30) as vr:
                                 pass  # Payment redeemed, retry original request
                             continue
+                    except NeuraHttpError:
+                        # Already a well-formed error (e.g. the async-context
+                        # guard) — surface it unchanged.
+                        raise
                     except Exception as pay_err:
                         raise NeuraHttpError(e.code, {
                             "code": "payment_failed",
