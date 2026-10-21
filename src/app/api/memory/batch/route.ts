@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { resolveApiKey } from '@/lib/auth'
 import { generateEmbedding } from '@/lib/embeddings'
 import { checkRateLimit, withIdempotency } from '@/lib/middleware'
-import { respond, respondError } from '@/lib/response'
+import { respond, respondError, respondPaymentRequired } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 import { fireWebhook } from '@/lib/webhooks'
 import { checkCredits, deductCredits, buildX402Response, checkMemoryLimit, fireCreditsLowIfLow } from '@/lib/credits'
@@ -26,7 +26,7 @@ function getUsageMeta(auth: AuthContext, balance?: number) {
  * Max 25 per batch. Costs 1 credit per memory.
  */
 export async function POST(request: NextRequest) {
-    let rl: ReturnType<typeof checkRateLimit> | undefined
+  let rl: ReturnType<typeof checkRateLimit> | undefined
 try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
@@ -68,10 +68,10 @@ try {
       const creditCheck = await checkCredits(auth.tenantId, 'POST', '/api/memory/batch')
       if (!creditCheck.allowed || creditCheck.balance < totalCost) {
         const x402 = buildX402Response(auth.tenantId, totalCost)
-        return NextResponse.json(
-          { error: x402 },
-          { status: 402, headers: { 'X-Credits-Balance': String(creditCheck.balance || 0), 'X-Credits-Needed': String(totalCost) } }
-        )
+        return respondPaymentRequired(x402, rl, {
+          'X-Credits-Balance': String(creditCheck.balance || 0),
+          'X-Credits-Needed': String(totalCost),
+        })
       }
 
       // Generate embeddings in parallel
@@ -137,7 +137,7 @@ try {
  * Max 100 per batch. Free operation.
  */
 export async function DELETE(request: NextRequest) {
-    let rl: ReturnType<typeof checkRateLimit> | undefined
+  let rl: ReturnType<typeof checkRateLimit> | undefined
 try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)

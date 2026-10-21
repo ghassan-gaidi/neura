@@ -10,7 +10,7 @@ import { retryFailedDeliveries } from '@/lib/webhooks'
  * Called by Vercel cron or manually with admin key.
  */
 export async function POST(request: NextRequest) {
-    let rl: ReturnType<typeof checkRateLimit> | undefined
+  let rl: ReturnType<typeof checkRateLimit> | undefined
 try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)

@@ -42,7 +42,7 @@ function routeFiles(dir, out = []) {
  */
 function findCalls(src, from = 0) {
   const out = []
-  const re = /\brespond(?:Error)?\s*\(/g
+  const re = /\brespond(?:Error|PaymentRequired)?\s*\(/g
   re.lastIndex = from
   let m
   while ((m = re.exec(src))) {
@@ -107,5 +107,102 @@ test('every API route that rate-limits passes rl to respond/respondError', () =>
     }
   }
 
+  assert.deepEqual(offenders, [])
+})
+
+/**
+ * D14a — the 6 "insufficient credits" x402 responses (the 402 an agent sees when
+ * it needs to PAY) must carry the same X-RateLimit-* headers as every other
+ * response. Before the fix they were built with a bare `NextResponse.json(...)`,
+ * so a client polling for a top-up to clear saw a headerless 402.
+ *
+ * The check is intentionally structural rather than line-based:
+ *   1. No route may build an x402 body with a raw `NextResponse.json`.
+ *   2. Every route that mentions `buildX402Response` must route it through
+ *      `respondPaymentRequired(x402, rl, ...)` — i.e. it passes `rl`, which is
+ *      what makes the helper attach the rate-limit headers.
+ *   3. The helper itself must set all three headers, keep the body exactly
+ *      `{ error: x402 }`, and use status 402.
+ */
+test('D14a: every x402 402 response carries X-RateLimit-* headers', () => {
+  const offenders = []
+
+  // --- 1 + 2: route-level ------------------------------------------------------
+  for (const file of routeFiles(apiDir)) {
+    const src = readFileSync(file, 'utf8')
+    const rel = file.replace(repoRoot + '/', '').split('\\').join('/')
+
+    // A raw NextResponse.json building the x402 body bypasses the helper.
+    if (/NextResponse\.json\(\s*\{\s*error:\s*x402\s*\}/.test(src)) {
+      offenders.push(`${rel}: raw NextResponse.json({ error: x402 }) bypasses respondPaymentRequired`)
+    }
+
+    // Every x402 body must be returned through the helper, and the helper call
+    // must pass `rl` so the rate-limit headers can be attached.
+    if (src.includes('buildX402Response')) {
+      const calls = findCalls(src, src.indexOf('buildX402Response'))
+      const helperCalls = calls.filter((c) => c.text.startsWith('respondPaymentRequired('))
+      if (helperCalls.length === 0) {
+        offenders.push(`${rel}: buildX402Response() result is never returned via respondPaymentRequired()`)
+      }
+      for (const c of helperCalls) {
+        if (!/\brl\b/.test(c.text)) {
+          const line = src.slice(0, c.idx).split('\n').length
+          offenders.push(`${rel}:${line} respondPaymentRequired(...) does not pass rl — no rate-limit headers`)
+        }
+      }
+    }
+  }
+
+  // --- 3: helper contract -----------------------------------------------------
+  const helper = readFileSync(join(repoRoot, 'src', 'lib', 'response.ts'), 'utf8')
+  const helperBody = helper.slice(helper.indexOf('export function respondPaymentRequired'))
+  // Check the shared setRateLimitHeaders function (used by respond/respondError
+  // and by respondPaymentRequired) sets all three headers.
+  const setHeadersMatch = helper.match(/function setRateLimitHeaders[\s\S]*?^\}/m)
+  const setHeadersBody = setHeadersMatch ? setHeadersMatch[0] : ''
+  for (const header of ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset']) {
+    if (!setHeadersBody.includes(header)) {
+      offenders.push(`src/lib/response.ts: setRateLimitHeaders does not set ${header}`)
+    }
+  }
+  if (!helperBody.includes('setRateLimitHeaders(response.headers, rl)')) {
+    offenders.push('src/lib/response.ts: respondPaymentRequired does not call setRateLimitHeaders(response.headers, rl)')
+  }
+  if (!/status:\s*402/.test(helperBody)) {
+    offenders.push('src/lib/response.ts: respondPaymentRequired does not use status 402')
+  }
+  if (!/NextResponse\.json\(\{\s*error:\s*x402\s*\}/.test(helperBody)) {
+    offenders.push('src/lib/response.ts: respondPaymentRequired body is not exactly { error: x402 }')
+  }
+
+  assert.deepEqual(offenders, [])
+})
+
+/**
+ * The two cron SUCCESS responses (the ones the reviewer flagged) must also
+ * carry the three headers. They build the response inline, so assert on the
+ * header-setting that follows each `NextResponse.json` in those two files.
+ */
+test('D14a: cron success responses carry X-RateLimit-* headers', () => {
+  const offenders = []
+  const cronFiles = [
+    'src/app/api/memory/cleanup/route.ts',
+    'src/app/api/webhooks/retry-cron/route.ts',
+  ]
+  for (const rel of cronFiles) {
+    const src = readFileSync(join(repoRoot, rel), 'utf8')
+    const lines = src.split('\n')
+    for (let i = 0; i < lines.length; i++) {
+      if (!lines[i].includes('NextResponse.json') || !lines[i].includes('ok: true')) continue
+      // Look at the response construction plus the 4 lines that follow it.
+      const snippet = lines.slice(i, i + 5).join('\n')
+      for (const header of ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset']) {
+        if (!snippet.includes(header)) {
+          offenders.push(`${rel}:${i + 1} success response missing ${header}`)
+        }
+      }
+    }
+  }
   assert.deepEqual(offenders, [])
 })

@@ -9,7 +9,7 @@ import { respond, respondError } from '@/lib/response'
  * List credit transactions for this tenant with pagination.
  */
 export async function GET(request: NextRequest) {
-    let rl: ReturnType<typeof checkRateLimit> | undefined
+  let rl: ReturnType<typeof checkRateLimit> | undefined
 try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)

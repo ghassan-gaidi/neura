@@ -2,11 +2,10 @@ import { NextRequest } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { resolveApiKey } from '@/lib/auth'
 import { checkRateLimit, withIdempotency } from '@/lib/middleware'
-import { respond, respondError } from '@/lib/response'
+import { respond, respondError, respondPaymentRequired } from '@/lib/response'
 import { AuthContext } from '@/lib/types'
 import { fireWebhook } from '@/lib/webhooks'
 import { checkCredits, deductCredits, buildX402Response, fireCreditsLowIfLow } from '@/lib/credits'
-import { NextResponse } from 'next/server'
 
 /**
  * DELETE /api/memory/[id]
@@ -15,7 +14,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-    let rl: ReturnType<typeof checkRateLimit> | undefined
+  let rl: ReturnType<typeof checkRateLimit> | undefined
 try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
@@ -61,7 +60,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-    let rl: ReturnType<typeof checkRateLimit> | undefined
+  let rl: ReturnType<typeof checkRateLimit> | undefined
 try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
@@ -81,10 +80,10 @@ try {
       const creditCheck = await checkCredits(auth.tenantId, 'PATCH', '/api/memory')
       if (!creditCheck.allowed) {
         const x402 = buildX402Response(auth.tenantId, creditCheck.cost)
-        return NextResponse.json(
-          { error: x402 },
-          { status: 402, headers: { 'X-Credits-Balance': '0', 'X-Credits-Needed': String(creditCheck.cost) } }
-        )
+        return respondPaymentRequired(x402, rl, {
+          'X-Credits-Balance': '0',
+          'X-Credits-Needed': String(creditCheck.cost),
+        })
       }
 
       const body = await req.json().catch(() => ({}))

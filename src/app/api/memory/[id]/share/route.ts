@@ -16,7 +16,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-    let rl: ReturnType<typeof checkRateLimit> | undefined
+  let rl: ReturnType<typeof checkRateLimit> | undefined
 try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
@@ -92,7 +92,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-    let rl: ReturnType<typeof checkRateLimit> | undefined
+  let rl: ReturnType<typeof checkRateLimit> | undefined
 try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
@@ -129,7 +129,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-    let rl: ReturnType<typeof checkRateLimit> | undefined
+  let rl: ReturnType<typeof checkRateLimit> | undefined
 try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)

@@ -13,7 +13,7 @@ import { UpsertStateRequest, AuthContext } from '@/lib/types'
  * Body: { key, value }
  */
 export async function POST(request: NextRequest) {
-    let rl: ReturnType<typeof checkRateLimit> | undefined
+  let rl: ReturnType<typeof checkRateLimit> | undefined
 try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
@@ -65,7 +65,7 @@ try {
  * Retrieve all state keys for this tenant.
  */
 export async function GET(request: NextRequest) {
-    let rl: ReturnType<typeof checkRateLimit> | undefined
+  let rl: ReturnType<typeof checkRateLimit> | undefined
 try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)

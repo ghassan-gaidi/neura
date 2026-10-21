@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { resolveApiKey } from '@/lib/auth'
 import { generateEmbedding } from '@/lib/embeddings'
 import { checkRateLimit } from '@/lib/middleware'
-import { respond, respondError } from '@/lib/response'
+import { respond, respondError, respondPaymentRequired } from '@/lib/response'
 import { logUsage } from '@/lib/usage'
 import { SearchMemoryRequest } from '@/lib/types'
 import { checkCredits, deductCredits, buildX402Response, fireCreditsLowIfLow } from '@/lib/credits'
@@ -14,7 +14,7 @@ import { checkCredits, deductCredits, buildX402Response, fireCreditsLowIfLow } f
  * Body: { query?, embedding?, filters?, limit?, min_score? }
  */
 export async function POST(request: NextRequest) {
-    let rl: ReturnType<typeof checkRateLimit> | undefined
+  let rl: ReturnType<typeof checkRateLimit> | undefined
 try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
@@ -30,10 +30,10 @@ try {
     const creditCheck = await checkCredits(auth.tenantId, 'POST', '/api/memory/search')
     if (!creditCheck.allowed) {
       const x402 = buildX402Response(auth.tenantId, creditCheck.cost)
-      return NextResponse.json(
-        { error: x402 },
-        { status: 402, headers: { 'X-Credits-Balance': '0', 'X-Credits-Needed': String(creditCheck.cost) } }
-      )
+      return respondPaymentRequired(x402, rl, {
+        'X-Credits-Balance': '0',
+        'X-Credits-Needed': String(creditCheck.cost),
+      })
     }
 
     const body: SearchMemoryRequest = await request.json().catch(() => ({}))

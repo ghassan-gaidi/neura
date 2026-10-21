@@ -12,7 +12,7 @@ import { isTestTopUpAllowed, PRICING } from '@/lib/pricing'
  * Get current credit balance and pricing info.
  */
 export async function GET(request: NextRequest) {
-    let rl: ReturnType<typeof checkRateLimit> | undefined
+  let rl: ReturnType<typeof checkRateLimit> | undefined
 try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)
@@ -54,7 +54,7 @@ try {
  * This is disabled unless the ALLOW_TEST_TOP_UP environment variable is set to 'true'.
  */
 export async function POST(request: NextRequest) {
-    let rl: ReturnType<typeof checkRateLimit> | undefined
+  let rl: ReturnType<typeof checkRateLimit> | undefined
 try {
     const auth = await resolveApiKey(request)
     if (!auth) return respondError('unauthorized', 'Missing or invalid API key', 401)

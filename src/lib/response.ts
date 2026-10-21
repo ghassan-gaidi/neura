@@ -82,6 +82,27 @@ export function respondError(
   return response
 }
 
+/**
+ * Send an x402 "payment required" response.
+ *
+ * The body is exactly `{ error: x402 }` with status 402 — the shape an agent
+ * reads when it needs to pay. Rate-limit headers are attached so a client that
+ * polls a 402 (waiting for top-up to clear) can still see the rate-limit
+ * budget instead of hitting a headerless response.
+ */
+export function respondPaymentRequired(
+  x402: unknown,
+  rl?: RateLimitInfo,
+  extraHeaders?: Record<string, string>,
+): NextResponse {
+  const response = NextResponse.json({ error: x402 }, {
+    status: 402,
+    headers: extraHeaders ? { ...extraHeaders } : undefined,
+  })
+  setRateLimitHeaders(response.headers, rl)
+  return response
+}
+
 function getDefaultAction(code: string): string {
   const actions: Record<string, string> = {
     unauthorized: 'check_api_key',
